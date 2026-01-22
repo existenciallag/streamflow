@@ -1,0 +1,10 @@
+id,cytometer_id,optical_channel_id,associated_fluorochrome
+0c8dcf8c-d891-4dbf-9bf7-912f9ccc2f91,2c30d199-bd7f-4f33-ad14-05be2a14da2e,7593f60d-2adb-4060-be0f-f9a575edd2bc,[]
+383e3362-96c9-49fb-8cb3-623680f1ffae,2c30d199-bd7f-4f33-ad14-05be2a14da2e,6f668394-5f05-4c1a-b458-d09c884a8dc2,"""FL-0006"""
+a1e71140-4637-4ede-ab80-46ebbab34ae7,2c30d199-bd7f-4f33-ad14-05be2a14da2e,60ea0db0-97c4-454c-9e8e-6ec28d91da1e,"""FL-0012"""
+1a1efdf3-35f4-418c-92fb-8242e1680aa3,2c30d199-bd7f-4f33-ad14-05be2a14da2e,c927b998-f9cb-4264-b83c-3764684793c5,"[""FL-0005"",""FL-0009"",""FL-0010""]"
+1aed0352-5b2f-4fa5-aad1-f6e9aeb7dcc0,2c30d199-bd7f-4f33-ad14-05be2a14da2e,e9ddebb0-4974-41e3-ae53-f528bb9c9c62,"""FL-0011"""
+b1b8c2c1-9354-4c55-b32b-6edaf1fce479,2c30d199-bd7f-4f33-ad14-05be2a14da2e,02f085d4-a8ab-45dc-9c4e-996f84b10452,"""FL-0001"""
+97455b42-70cb-4885-abcf-e34201679ded,2c30d199-bd7f-4f33-ad14-05be2a14da2e,4d48dec7-120f-402e-8131-0de39701213e,"[""FL-0019"",""FL-0021""]"
+ffb1da22-bc4c-4c6e-a11e-4c86d5326ab2,2c30d199-bd7f-4f33-ad14-05be2a14da2e,98c0ee06-acf2-4435-a001-239f3ec91ff8,"[""FL-0008"",""FL-0017"",""FL-0018"",""FL-0020""]"
+4cf65896-c1eb-4251-a9eb-6cf38b1ebb08,2c30d199-bd7f-4f33-ad14-05be2a14da2e,ab8abaa6-92f8-402a-b2a9-0695a15cf4bb,"[""FL-0002"",""FL-0003"",""FL-0004"",""FL-0014"",""FL-0016""]"

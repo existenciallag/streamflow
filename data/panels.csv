@@ -1,0 +1,17 @@
+id,name,category_id,description,sample_volume,created_at,status,cytometer_id,washed_sample,acquisition_protocol_status,acquisition_protocol_name,acquisition_protocol_code,compensation_status,compensation_name,compensation_code,analysis_protocol_status,analysis_protocol_name,analysis_protocol_code
+83750645-7216-4955-bc28-a0e4ac92fffb,LST,76a88222-206b-41c6-991d-6a452ad5c0c1,null,50,10:36.8,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,TRUE,null,null,null,null,null,null,null,null,null
+0e022541-eafa-470c-8812-6d3443436239,SLP-B 2,8cdd0da5-4f69-4d1b-95c3-bde13860bdeb,null,50,43:32.5,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+20c4a180-d79f-46dd-aa04-84c16e18c726,SLP-B 3,8cdd0da5-4f69-4d1b-95c3-bde13860bdeb,null,50,31:55.7,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+e00aff8f-6511-4dc2-a8eb-664ff5a97210,SLP-B 4,8cdd0da5-4f69-4d1b-95c3-bde13860bdeb,null,50,34:32.9,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+231cb1ef-f88d-4ad7-9558-683b4b7c3ad7,SLP B 5,8cdd0da5-4f69-4d1b-95c3-bde13860bdeb,null,50,36:48.3,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+2b82f862-6492-4fc3-9acc-8ce6bb8552bf,ALOT INTRA,76a88222-206b-41c6-991d-6a452ad5c0c1,null,50,07:43.6,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+6a5f599e-70e7-4214-96b6-eb17d54798ed,LMA 1,3fc542aa-d71a-4275-88e1-154e81337f30,null,50,04:09.9,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+993db7a3-23e8-4c09-925c-0dfb66c6cab0,LMA 2,3fc542aa-d71a-4275-88e1-154e81337f30,null,50,06:15.8,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+179f9535-a799-4ac5-9959-a0efa0ba672c,MM 1 ,8eef08be-acd6-434b-83b5-76e773ed0cf0,null,50,09:04.8,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+f52afbb7-2c99-427d-9f0e-376dda0c5385,MM 2 ,8eef08be-acd6-434b-83b5-76e773ed0cf0,null,50,13:12.9,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+17283b0d-e299-4550-bc51-fdc458893099,MM 3,8eef08be-acd6-434b-83b5-76e773ed0cf0,null,50,15:15.0,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+abe550b8-86e1-476f-b25f-09ce71b907e3,PL1,d584c987-df91-4192-abd9-d2bb50995535,Poblaciones linfocitarias (CD4/CD8/CD45/CD3). Utilizando anticuerpos de miltenyi.,25,17:07.8,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+6a6a9ecc-4897-4ba5-8a2b-4ffd30c6420e,ALOT MO,76a88222-206b-41c6-991d-6a452ad5c0c1,Alternativa para ALOT intracelular,50,40:23.9,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,null,null,null,null,null,null,null,null,null
+ddf288b9-c421-4a80-aa80-4b4504b70ef4,prueba,d584c987-df91-4192-abd9-d2bb50995535,"prueba
+
+General Reagents: Contrad 70 (1μL)",25,17:48.1,Active,2c30d199-bd7f-4f33-ad14-05be2a14da2e,FALSE,Active,null,P,Active,null,PCOMP1760745636901,Active,null,PANAL

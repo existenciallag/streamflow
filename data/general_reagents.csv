@@ -1,0 +1,8 @@
+id,name,brand_id,type,concentration,preparation_date,notes,created_at,arrival_date,expiration_date,price
+38ce50da-1af0-4194-86ba-bdfc009234e7,Flow Clean Cleaning Agent,a0825477-f52a-4992-9d58-17849b64ca85,Buffer,null,null,null,2025-06-11 15:02:32.002544+00,null,null,null
+2ad0e4c1-ee1d-43a4-8a5e-5d9cbbf74201,Contrad 70,a0825477-f52a-4992-9d58-17849b64ca85,Solution,null,null,null,2025-06-11 15:04:43.603855+00,null,null,null
+3b1b733c-9e48-46ae-919d-ff5372996f9b,Versalyse,a0825477-f52a-4992-9d58-17849b64ca85,Solution,null,null,null,2025-06-11 15:06:15.427149+00,null,null,647
+67aadb58-bb53-4159-be0b-f9ac457d534b,Fixative Solutin,a0825477-f52a-4992-9d58-17849b64ca85,Other,null,null,null,2025-06-11 15:43:02.430641+00,null,null,255.35
+e9939888-2147-40ff-a018-c61ce5613fae,Pharm Lyse,fcbaa6cc-f04b-4a01-af66-9353f2e3c235,Other,10x,null,null,2025-07-01 13:52:50.51167+00,null,null,500
+a8b24a3f-1683-4c89-a66d-c9989630eb8e,Kit de deteccion de muerte celular,df788f37-c243-45bf-aeab-1e0887c8c97d,Other,null,null,Kit de tunel,2025-09-25 14:48:04.231097+00,9/24/2025,null,548
+64cb0a26-fffc-4967-b5c5-8a965925c0c9,Superclear 12x75mm Culture tubes,c090bb8e-6188-4d03-aff5-bdd8303f8f9b,Other,null,null,null,2025-06-11 14:31:10.147497+00,6/11/2025,2/2/2027,116
