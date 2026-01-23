@@ -59,16 +59,16 @@ def get_reagents_with_details():
             f.name as fluorochrome,
             b.name as brand,
             COUNT(DISTINCT CASE
-                WHEN ru.status IN ('Stored', 'In Use')
+                WHEN LOWER(ru.status) IN ('stored', 'in use')
                 AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
                 THEN ru.id
             END) as available_vials,
             MIN(CASE
-                WHEN ru.status IN ('Stored', 'In Use')
+                WHEN LOWER(ru.status) IN ('stored', 'in use')
                 THEN ru.expiration_date
             END) as earliest_expiration,
             AVG(CASE
-                WHEN ru.status IN ('Stored', 'In Use')
+                WHEN LOWER(ru.status) IN ('stored', 'in use')
                 THEN ru.initial_volume
             END) as avg_initial_volume
         FROM reagents r
