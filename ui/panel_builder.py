@@ -8,6 +8,7 @@ import streamlit as st
 import uuid
 from datetime import datetime
 import pandas as pd
+import json
 from ui.crud_panels import query_panels
 
 
@@ -46,7 +47,7 @@ def get_available_channels(cytometer_id):
 
 
 def get_reagents_with_details():
-    """Get all reagents with their details (semantic names only)"""
+    """Get all reagents with their details including correct volume-based pricing"""
     return query_panels("""
         SELECT
             r.id as reagent_id,
@@ -54,39 +55,83 @@ def get_reagents_with_details():
             r.target_antigen,
             r.clone,
             r.price,
+            r.fluorochrome as fluorochrome_id,
             f.name as fluorochrome,
             b.name as brand,
-            COUNT(DISTINCT ru.id) as available_vials,
-            MIN(ru.expiration_date) as earliest_expiration
+            COUNT(DISTINCT CASE
+                WHEN ru.status IN ('Stored', 'In Use')
+                AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
+                THEN ru.id
+            END) as available_vials,
+            MIN(CASE
+                WHEN ru.status IN ('Stored', 'In Use')
+                THEN ru.expiration_date
+            END) as earliest_expiration,
+            AVG(CASE
+                WHEN ru.status IN ('Stored', 'In Use')
+                THEN ru.initial_volume
+            END) as avg_initial_volume
         FROM reagents r
         JOIN fluorochromes f ON f.id = r.fluorochrome
         LEFT JOIN brands b ON b.id = r.brand_id
         LEFT JOIN reagent_units ru ON ru.reagent_id = r.id
-            AND ru.status IN ('Stored', 'In Use')
-            AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
-        GROUP BY r.id, r.name, r.target_antigen, r.clone, r.price, f.name, b.name
+        GROUP BY r.id, r.name, r.target_antigen, r.clone, r.price, r.fluorochrome, f.name, b.name
         ORDER BY r.name
     """)
 
 
-def get_suggested_channel(cytometer_id, fluorochrome):
-    """Get the suggested optical channel for a fluorochrome"""
+def get_suggested_channel(cytometer_id, fluorochrome_id):
+    """
+    Get the suggested optical channel for a fluorochrome using ID-based matching.
+    The associated_fluorochrome column contains JSON array of fluorochrome IDs.
+    """
     result = query_panels("""
         SELECT
             oc.id as channel_id,
-            oc.name as channel_name
+            oc.name as channel_name,
+            coc.associated_fluorochrome,
+            coc.primary_fluorochrome
         FROM cytometer_optical_channels coc
         JOIN optical_channels oc ON oc.id = coc.optical_channel_id
         WHERE coc.cytometer_id = ?
-        AND (
-            coc.primary_fluorochrome = ?
-            OR coc.associated_fluorochrome LIKE '%' || ? || '%'
-        )
-        LIMIT 1
-    """, (cytometer_id, fluorochrome, fluorochrome))
+    """, (cytometer_id,))
 
-    if not result.empty:
-        return result.iloc[0]["channel_id"], result.iloc[0]["channel_name"]
+    if result.empty:
+        return None, None
+
+    # Parse associated_fluorochrome JSON and find match
+    for _, row in result.iterrows():
+        assoc_fluoro_json = row['associated_fluorochrome']
+
+        if not assoc_fluoro_json or assoc_fluoro_json == '[]':
+            continue
+
+        try:
+            # Parse JSON array
+            fluorochrome_list = json.loads(assoc_fluoro_json)
+
+            # Clean up escaped quotes if present (handle both formats)
+            cleaned_list = []
+            for item in fluorochrome_list:
+                # Remove extra quotes: "\"FL-0006\"" -> FL-0006
+                cleaned = item.strip('"').strip('\\').strip('"')
+                cleaned_list.append(cleaned)
+
+            # Check if fluorochrome_id is in the list
+            if fluorochrome_id in cleaned_list:
+                return row['channel_id'], row['channel_name']
+
+        except (json.JSONDecodeError, TypeError):
+            # If JSON parsing fails, try simple string matching
+            if fluorochrome_id in str(assoc_fluoro_json):
+                return row['channel_id'], row['channel_name']
+            continue
+
+    # Check primary fluorochrome as fallback
+    for _, row in result.iterrows():
+        if row['primary_fluorochrome'] == fluorochrome_id:
+            return row['channel_id'], row['channel_name']
+
     return None, None
 
 
@@ -123,14 +168,21 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
             st.write(ab['brand'] or "N/A")
 
             st.caption("**Price:**")
-            if ab['price']:
-                st.write(f"${ab['price']:.2f} / 100 µL")
+            if ab['price'] and ab['avg_initial_volume']:
+                # Calculate correct price per µL
+                unit_cost = ab['price'] / ab['avg_initial_volume']
+                st.write(f"${ab['price']:.2f} / {ab['avg_initial_volume']:.0f} µL")
+                st.caption(f"(${unit_cost:.3f} per µL)")
+            elif ab['price']:
+                st.write(f"${ab['price']:.2f}")
             else:
                 st.write("N/A")
 
             st.caption("**Available Vials:**")
             if ab['available_vials'] > 0:
                 st.success(f"{ab['available_vials']} vial(s)")
+                if ab['earliest_expiration']:
+                    st.caption(f"Exp: {ab['earliest_expiration'][:10]}")
             else:
                 st.error("No stock available")
 
@@ -138,9 +190,9 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
         st.markdown("---")
         st.caption("**Channel Assignment:**")
 
-        # Auto-suggest channel
+        # Auto-suggest channel using fluorochrome ID
         suggested_channel_id, suggested_channel_name = get_suggested_channel(
-            cytometer_id, ab['fluorochrome']
+            cytometer_id, ab['fluorochrome_id']
         )
 
         if suggested_channel_id:
@@ -148,7 +200,7 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
             selected_channel_id = suggested_channel_id
             selected_channel_name = suggested_channel_name
         else:
-            st.warning("⚠ No automatic channel match")
+            st.warning("⚠ No automatic channel match found")
             # Manual selection
             channels = get_available_channels(cytometer_id)
             if channels.empty:
@@ -166,7 +218,7 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
 
         # Usage parameters
         st.markdown("---")
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
 
         with col1:
             volume = st.number_input(
@@ -185,15 +237,14 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
                 key=f"{key_prefix}_intra_{ab['reagent_id']}"
             )
 
-        with col3:
-            staining_step = st.number_input(
-                "Step",
-                min_value=1,
-                max_value=5,
-                value=1,
-                help="Staining step order (1=first, 2=second, etc.)",
-                key=f"{key_prefix}_step_{ab['reagent_id']}"
-            )
+        staining_step = st.number_input(
+            "Staining Step",
+            min_value=1,
+            max_value=5,
+            value=1 if not is_intracellular else 2,
+            help="Workflow order: 1=first, 2=second, etc.",
+            key=f"{key_prefix}_step_{ab['reagent_id']}"
+        )
 
         # Display name customization
         default_display = f"{ab['target_antigen'] or ab['reagent_name']} {ab['fluorochrome']}"
@@ -203,11 +254,13 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
             key=f"{key_prefix}_display_{ab['reagent_id']}"
         )
 
-        # Calculate cost
+        # Calculate cost using ACTUAL volume from reagent_units
         cost_per_test = 0.0
-        if ab['price'] and volume > 0:
-            # price is per 100 µL
-            unit_cost = ab['price'] / 100.0
+        unit_cost = 0.0
+
+        if ab['price'] and ab['avg_initial_volume'] and volume > 0:
+            # Correct calculation: price / actual_vial_volume * volume_used
+            unit_cost = ab['price'] / ab['avg_initial_volume']
             cost_per_test = volume * unit_cost
 
         # Add button
@@ -216,6 +269,7 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
                 "reagent_id": ab['reagent_id'],
                 "reagent_name": ab['reagent_name'],
                 "fluorochrome": ab['fluorochrome'],
+                "fluorochrome_id": ab['fluorochrome_id'],
                 "clone": ab['clone'],
                 "optical_channel_id": selected_channel_id,
                 "channel_display_name": selected_channel_name,
@@ -224,7 +278,7 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
                 "is_surface": 0 if is_intracellular else 1,
                 "staining_step": staining_step,
                 "display_name": display_name,
-                "unit_cost": ab['price'] / 100.0 if ab['price'] else 0.0,
+                "unit_cost": unit_cost,
                 "cost_per_test": cost_per_test,
             }
 
@@ -382,69 +436,58 @@ def create_panel():
     st.info(f"✓ Using **{selected_cyt_name}** — All channels configured for this instrument")
 
     # ============================================================
-    # PROTOCOLS SELECTION (Simplified)
+    # PROTOCOLS SELECTION (Simplified - use existing columns)
     # ============================================================
     with st.expander("📋 Protocols", expanded=False):
         col1, col2, col3 = st.columns(3)
 
-        # Acquisition protocols
+        # Acquisition protocol (use name-based approach)
         with col1:
-            acq_protocols = query_panels("""
-                SELECT id, name, version, status
-                FROM acquisition_protocols
-                WHERE cytometer_id = ?
-                ORDER BY status DESC, name
-            """, (cytometer_id,))
+            st.caption("**Acquisition Protocol**")
+            acquisition_protocol_name = st.text_input(
+                "Protocol Name",
+                value="Standard Acquisition",
+                key="acq_protocol_name",
+                help="Name of acquisition protocol"
+            )
+            acquisition_protocol_status = st.selectbox(
+                "Status",
+                ["draft", "validated", "archived"],
+                index=1,
+                key="acq_protocol_status"
+            )
 
-            if not acq_protocols.empty:
-                acq_options = ["(None)"] + [
-                    f"{row['name']} v{row['version']}" + (" ✓" if row['status'] == 'validated' else "")
-                    for _, row in acq_protocols.iterrows()
-                ]
-                selected_acq = st.selectbox("Acquisition Protocol", acq_options)
-                acquisition_protocol_id = acq_protocols.iloc[acq_options.index(selected_acq) - 1]["id"] if selected_acq != "(None)" else None
-            else:
-                st.caption("No acquisition protocols available")
-                acquisition_protocol_id = None
-
-        # Compensation protocols
+        # Compensation protocol
         with col2:
-            comp_protocols = query_panels("""
-                SELECT id, name, version, status
-                FROM compensation_protocols
-                WHERE cytometer_id = ?
-                ORDER BY status DESC, name
-            """, (cytometer_id,))
+            st.caption("**Compensation Protocol**")
+            compensation_protocol_name = st.text_input(
+                "Protocol Name",
+                value="Standard Compensation",
+                key="comp_protocol_name",
+                help="Name of compensation protocol"
+            )
+            compensation_protocol_status = st.selectbox(
+                "Status",
+                ["draft", "validated", "archived"],
+                index=1,
+                key="comp_protocol_status"
+            )
 
-            if not comp_protocols.empty:
-                comp_options = ["(None)"] + [
-                    f"{row['name']} v{row['version']}" + (" ✓" if row['status'] == 'validated' else "")
-                    for _, row in comp_protocols.iterrows()
-                ]
-                selected_comp = st.selectbox("Compensation Protocol", comp_options)
-                compensation_protocol_id = comp_protocols.iloc[comp_options.index(selected_comp) - 1]["id"] if selected_comp != "(None)" else None
-            else:
-                st.caption("No compensation protocols available")
-                compensation_protocol_id = None
-
-        # Analysis protocols
+        # Analysis protocol
         with col3:
-            analysis_protocols = query_panels("""
-                SELECT id, name, version, status
-                FROM analysis_protocols
-                ORDER BY status DESC, name
-            """)
-
-            if not analysis_protocols.empty:
-                analysis_options = ["(None)"] + [
-                    f"{row['name']} v{row['version']}" + (" ✓" if row['status'] == 'validated' else "")
-                    for _, row in analysis_protocols.iterrows()
-                ]
-                selected_analysis = st.selectbox("Analysis Protocol", analysis_options)
-                analysis_protocol_id = analysis_protocols.iloc[analysis_options.index(selected_analysis) - 1]["id"] if selected_analysis != "(None)" else None
-            else:
-                st.caption("No analysis protocols available")
-                analysis_protocol_id = None
+            st.caption("**Analysis Protocol**")
+            analysis_protocol_name = st.text_input(
+                "Protocol Name",
+                value="Standard Gating",
+                key="analysis_protocol_name",
+                help="Name of analysis protocol"
+            )
+            analysis_protocol_status = st.selectbox(
+                "Status",
+                ["draft", "validated", "archived"],
+                index=1,
+                key="analysis_protocol_status"
+            )
 
     # ============================================================
     # SPLIT VIEW: LEFT (Selection) | RIGHT (Composition)
@@ -459,18 +502,12 @@ def create_panel():
     with left_col:
         st.markdown("### 🔍 Antibody Selection")
 
-        # Search and filter
+        # Search only (removed surface/intracellular filter)
         search_query = st.text_input(
             "Search",
-            placeholder="Search by name, antigen, or clone...",
+            placeholder="Search by name, antigen, clone, or fluorochrome...",
             key="ab_search"
         )
-
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            filter_surface = st.checkbox("Surface markers", value=True, key="filter_surface")
-        with col_f2:
-            filter_intra = st.checkbox("Intracellular", value=True, key="filter_intra")
 
         # Load reagents
         reagents_df = get_reagents_with_details()
@@ -561,18 +598,20 @@ def create_panel():
             # Calculate total cost
             total_cost = calculate_panel_cost(st.session_state["panel_draft_reagents"])
 
-            # Insert panel
+            # Insert panel using EXISTING columns (not FK references)
             query_panels("""
                 INSERT INTO panels (
                     id, name, version, description,
                     sample_type, sample_volume, washed_sample,
                     clinical_indication,
                     cytometer_id,
-                    acquisition_protocol_id, compensation_protocol_id, analysis_protocol_id,
+                    acquisition_protocol_name, acquisition_protocol_status,
+                    compensation_name, compensation_status,
+                    analysis_protocol_name, analysis_protocol_status,
                     estimated_cost_per_test,
                     status,
                     created_at, created_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 panel_id,
                 panel_name.strip(),
@@ -583,9 +622,12 @@ def create_panel():
                 1 if washed_sample else 0,
                 clinical_indication or None,
                 cytometer_id,
-                acquisition_protocol_id,
-                compensation_protocol_id,
-                analysis_protocol_id,
+                acquisition_protocol_name,
+                acquisition_protocol_status,
+                compensation_protocol_name,
+                compensation_protocol_status,
+                analysis_protocol_name,
+                analysis_protocol_status,
                 total_cost,
                 "draft",
                 now,
@@ -598,10 +640,10 @@ def create_panel():
                     INSERT INTO panel_reagents (
                         id, panel_id, reagent_id,
                         optical_channel_id, channel_display_name,
-                        volume_per_test, unit_cost, cost_per_test,
+                        volume_used, unit_cost, cost_per_test,
                         is_intracellular, is_surface, staining_step,
                         display_name,
-                        added_at, added_by
+                        assigned_at, added_by
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     str(uuid.uuid4()),
@@ -622,6 +664,7 @@ def create_panel():
 
             st.success(f"✅ Panel '{panel_name}' created successfully!")
             st.info(f"Panel ID: {panel_id}")
+            st.info(f"Total Cost: ${total_cost:.2f} per test")
 
             # Clear draft
             st.session_state["panel_draft_reagents"] = []
