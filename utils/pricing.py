@@ -293,7 +293,7 @@ def get_panel_cost_summary(panel_id: str, strategy: CostStrategy = 'cheapest') -
         status_text = "Complete"
 
     summary = f"{status_icon} {result['panel_name']} (v{result.get('panel_version', '1.0.0')})\n"
-    summary += f"Total Cost: €{result['total_cost']:.2f} ({strategy} strategy)\n"
+    summary += f"Total Cost: ${result['total_cost']:.2f} ({strategy} strategy)\n"
     summary += f"Status: {status_text} ({result['num_available']}/{result['num_reagents']} reagents available)\n"
 
     if result['warnings']:
@@ -331,7 +331,7 @@ def get_panel_cost_breakdown(panel_id: str, strategy: CostStrategy = 'cheapest')
 
         if item['status'] == 'available':
             output += f"✅ {reagent_name:<30} ({channel})\n"
-            output += f"   {item['volume_needed']:>6.1f}µL × €{item['cost_per_ul']:.4f}/µL = €{item['reagent_cost']:.2f}\n"
+            output += f"   {item['volume_needed']:>6.1f}µL × ${item['cost_per_ul']:.4f}/µL = ${item['reagent_cost']:.2f}\n"
             output += f"   Using Lot: {item['using_lot']} ({item['available_volume']:.1f}µL available)\n"
 
         elif item['status'] == 'out_of_stock':
@@ -345,7 +345,7 @@ def get_panel_cost_breakdown(panel_id: str, strategy: CostStrategy = 'cheapest')
         output += "\n"
 
     output += "=" * 80 + "\n"
-    output += f"TOTAL COST: €{result['total_cost']:.2f}\n"
+    output += f"TOTAL COST: ${result['total_cost']:.2f}\n"
 
     if not result['is_complete']:
         output += "\n⚠️ WARNING: This panel is incomplete due to missing reagents.\n"

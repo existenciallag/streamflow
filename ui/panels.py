@@ -81,30 +81,24 @@ def show_panels(panels_df=None):
     if "panel_selected_id" not in st.session_state:
         st.session_state["panel_selected_id"] = None
 
-    # Load panels with semantic names
-    if panels_df is None:
-        panels = query_panels("""
-            SELECT
-                p.id,
-                p.name,
-                p.version,
-                p.status,
-                p.sample_type,
-                p.sample_volume,
-                p.clinical_indication,
-                p.estimated_cost_per_test,
-                c.name as cytometer_name,
-                p.created_at
-            FROM panels p
-            LEFT JOIN cytometers c ON c.id = p.cytometer_id
-            ORDER BY p.created_at DESC
-        """)
-    elif isinstance(panels_df, dict):
-        panels = panels_df.get("panels")
-    elif isinstance(panels_df, pd.DataFrame):
-        panels = panels_df.copy()
-    else:
-        panels = None
+    # ALWAYS load panels fresh from database to ensure updates are reflected
+    # This ensures the list updates after create/delete operations
+    panels = query_panels("""
+        SELECT
+            p.id,
+            p.name,
+            p.version,
+            p.status,
+            p.sample_type,
+            p.sample_volume,
+            p.clinical_indication,
+            p.estimated_cost_per_test,
+            c.name as cytometer_name,
+            p.created_at
+        FROM panels p
+        LEFT JOIN cytometers c ON c.id = p.cytometer_id
+        ORDER BY p.created_at DESC
+    """)
 
     if panels is None or panels.empty:
         st.info("No panels found. Create one in Panel Builder.")
@@ -202,13 +196,21 @@ def show_panels(panels_df=None):
             with col3:
                 # Calculate cost dynamically from current stock
                 cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
-                cost_display = f"€{cost_result['total_cost']:.2f}"
-                if not cost_result['is_complete']:
-                    cost_display += " ⚠️"
+
+                # Handle error cases (e.g., panel deleted, calculation failed)
+                if 'error' in cost_result:
+                    cost_display = "—"
+                    help_text = f"Error: {cost_result.get('error', 'Unknown error')}"
+                else:
+                    cost_display = f"${cost_result.get('total_cost', 0.0):.2f}"
+                    if not cost_result.get('is_complete', True):
+                        cost_display += " ⚠️"
+                    help_text = "Calculated dynamically from current cheapest stock. ⚠️ = incomplete (some reagents unavailable)"
+
                 st.metric(
                     "Est. Cost/Test",
                     cost_display,
-                    help="Calculated dynamically from current cheapest stock. ⚠️ = incomplete (some reagents unavailable)"
+                    help=help_text
                 )
 
             col4, col5, col6 = st.columns(3)
@@ -307,9 +309,14 @@ def show_panels(panels_df=None):
 
                 # Calculate cost dynamically from current stock
                 cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
-                cost_status = "✅" if cost_result['is_complete'] else "⚠️"
-                st.markdown(f"### 💰 {cost_status} Estimated Cost: **€{cost_result['total_cost']:.2f}** per test")
-                st.caption("Calculated from current cheapest stock. Cost updates when reagent prices change.")
+
+                # Handle error cases
+                if 'error' in cost_result:
+                    st.warning(f"⚠️ Could not calculate cost: {cost_result.get('error', 'Unknown error')}")
+                else:
+                    cost_status = "✅" if cost_result.get('is_complete', True) else "⚠️"
+                    st.markdown(f"### 💰 {cost_status} Estimated Cost: **${cost_result.get('total_cost', 0.0):.2f}** per test")
+                    st.caption("Calculated from current cheapest stock. Cost updates when reagent prices change.")
 
         # =============================================================
         # EDIT MODE
