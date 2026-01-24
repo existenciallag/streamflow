@@ -180,7 +180,7 @@ def run_migration():
     print("Sample reagent units with pricing:")
     for row in cursor.fetchall():
         name, lot, price, volume, cost_per_ul = row
-        print(f"  {name[:30]:<30} | Lot: {lot:<10} | €{price:.2f} / {volume}µL = €{cost_per_ul:.4f}/µL")
+        print(f"  {name[:30]:<30} | Lot: {lot:<10} | ${price:.2f} / {volume}µL = ${cost_per_ul:.4f}/µL")
 
     conn.close()
 

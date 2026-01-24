@@ -343,7 +343,7 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
     with col3:
         st.metric(
             "Est. Cost/Test",
-            f"€{total_cost:.2f}",
+            f"${total_cost:.2f}",
             help="Calculated dynamically from current cheapest stock. Updates when reagent prices change."
         )
 
@@ -831,7 +831,7 @@ def create_panel():
 
                 st.success(f"✅ Panel '{panel_name}' created successfully!")
                 st.info(f"Panel ID: {panel_id}")
-                st.info(f"Est. Cost: €{total_cost:.2f} per test (from current stock)")
+                st.info(f"Est. Cost: ${total_cost:.2f} per test (from current stock)")
 
                 # Clear draft
                 st.session_state["panel_draft_reagents"] = []

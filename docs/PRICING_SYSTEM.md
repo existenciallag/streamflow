@@ -32,7 +32,7 @@ ALTER TABLE reagents ADD COLUMN catalog_volume REAL;
 
 - **Purpose**: Manufacturer's list price for reference
 - **Not Used For**: Actual cost calculations
-- **Example**: BD catalog lists CD34-PE at €500 for 100µL
+- **Example**: BD catalog lists CD34-PE at $500 for 100µL
 
 #### Tier 2: Actual Purchase Price (reagent_units table)
 ```sql
@@ -45,8 +45,8 @@ ALTER TABLE reagent_units ADD COLUMN cost_per_ul REAL;
 - **Purpose**: What you actually paid for each specific vial/lot
 - **This is the Source of Truth** for all cost calculations
 - **Example**:
-  - Lot A: Purchased from Supplier X for €450 (200µL) = €2.25/µL
-  - Lot B: Purchased from Supplier Y for €380 (200µL) = €1.90/µL
+  - Lot A: Purchased from Supplier X for $450 (200µL) = $2.25/µL
+  - Lot B: Purchased from Supplier Y for $380 (200µL) = $1.90/µL
   - Same reagent, different costs tracked accurately
 
 #### Tier 3: Panel Design (panels + panel_reagents tables)
@@ -89,22 +89,22 @@ Panel: MDS Panel v2.0
 - CD117-APC: 20µL needed
 
 Available stock:
-- CD34-PE Lot A: €2.25/µL (200µL available)
-- CD45-FITC Lot B: €1.80/µL (500µL available)
-- CD117-APC Lot C: €0.50/µL (300µL available)
+- CD34-PE Lot A: $2.25/µL (200µL available)
+- CD45-FITC Lot B: $1.80/µL (500µL available)
+- CD117-APC Lot C: $0.50/µL (300µL available)
 
 Calculation (cheapest strategy):
 ```
-CD34-PE:   10µL × €2.25/µL = €22.50
-CD45-FITC:  5µL × €1.80/µL = € 9.00
-CD117-APC: 20µL × €0.50/µL = €10.00
+CD34-PE:   10µL × $2.25/µL = $22.50
+CD45-FITC:  5µL × $1.80/µL = $ 9.00
+CD117-APC: 20µL × $0.50/µL = $10.00
                              -------
-Total Cost:                  €41.50
+Total Cost:                  $41.50
 ```
 
 **If stock changes** (e.g., cheaper CD34-PE lot arrives):
-- New Lot D: €1.95/µL
-- Panel cost automatically recalculates to €34.00
+- New Lot D: $1.95/µL
+- Panel cost automatically recalculates to $34.00
 
 ### Draft Panel Calculation
 
@@ -124,7 +124,7 @@ Function: `calculate_draft_panel_cost(reagent_list, strategy='cheapest')`
 - Never updated
 
 **After (Dynamic Costs):**
-- Shows "Est. Cost/Test: €41.50" in real-time
+- Shows "Est. Cost/Test: $41.50" in real-time
 - Tooltip: "Calculated dynamically from current cheapest stock"
 - Updates automatically when stock prices change
 - No cost data saved to database
@@ -136,8 +136,8 @@ Function: `calculate_draft_panel_cost(reagent_list, strategy='cheapest')`
 - Could be months/years out of date
 
 **After:**
-- Calculates cost on page load: `€41.50 ✅`
-- Warning if incomplete: `€35.00 ⚠️` (some reagents out of stock)
+- Calculates cost on page load: `$41.50 ✅`
+- Warning if incomplete: `$35.00 ⚠️` (some reagents out of stock)
 - Caption: "Calculated from current cheapest stock. Cost updates when reagent prices change."
 
 ## Migration
@@ -220,7 +220,7 @@ Get formatted text summary.
 **Returns:** String like:
 ```
 ✅ MDS Panel v2.0
-Total Cost: €41.50 (cheapest strategy)
+Total Cost: $41.50 (cheapest strategy)
 Status: Complete (3/3 reagents available)
 ```
 
@@ -324,7 +324,7 @@ def get_assay_actual_cost(assay_id):
 
 ## Troubleshooting
 
-### "Panel cost shows €0.00"
+### "Panel cost shows $0.00"
 
 **Cause:** No purchase prices set for reagent units
 
