@@ -151,8 +151,16 @@ def show_panels(panels_df=None):
             st.info("👈 Select a panel to view details")
             return
 
-        # Load full panel data
-        panel = panels[panels["id"] == panel_id].iloc[0]
+        # Load full panel data - validate panel still exists
+        panel_match = panels[panels["id"] == panel_id]
+        if panel_match.empty:
+            st.error("Selected panel no longer exists")
+            st.session_state["panel_selected_id"] = None
+            st.session_state["panel_mode"] = "view"
+            st.rerun()
+            return
+
+        panel = panel_match.iloc[0]
 
         # =============================================================
         # VIEW MODE
@@ -209,8 +217,16 @@ def show_panels(panels_df=None):
             st.markdown("---")
             st.markdown("### 📑 Protocols")
 
-            # Load full panel data for protocols
-            full_panel = query_panels("SELECT * FROM panels WHERE id = ?", (panel_id,)).iloc[0]
+            # Load full panel data for protocols - check if exists first
+            full_panel_query = query_panels("SELECT * FROM panels WHERE id = ?", (panel_id,))
+            if full_panel_query.empty:
+                st.error("Panel no longer exists (may have been deleted)")
+                st.session_state["panel_mode"] = "view"
+                st.session_state["panel_selected_id"] = None
+                st.rerun()
+                return
+
+            full_panel = full_panel_query.iloc[0]
 
             p1, p2, p3 = st.columns(3)
             with p1:
@@ -290,8 +306,16 @@ def show_panels(panels_df=None):
         elif st.session_state["panel_mode"] == "edit":
             st.markdown(f"## ✏️ Edit Panel: {panel['name']}")
 
-            # Load full panel data
-            full_panel = query_panels("SELECT * FROM panels WHERE id = ?", (panel_id,)).iloc[0]
+            # Load full panel data - check if exists first
+            full_panel_query = query_panels("SELECT * FROM panels WHERE id = ?", (panel_id,))
+            if full_panel_query.empty:
+                st.error("Panel no longer exists (may have been deleted)")
+                st.session_state["panel_mode"] = "view"
+                st.session_state["panel_selected_id"] = None
+                st.rerun()
+                return
+
+            full_panel = full_panel_query.iloc[0]
 
             with st.form("edit_panel_form"):
                 col1, col2 = st.columns(2)
@@ -452,11 +476,25 @@ def show_panels(panels_df=None):
 
             st.markdown("---")
 
-            col_btn1, col_btn2 = st.columns(2)
+            col_btn1, col_btn2, col_btn3 = st.columns(3)
+
             with col_btn1:
-                st.info("💡 To add new reagents, use the Panel Builder")
+                if st.button("🔧 Edit in Panel Builder", use_container_width=True, type="primary",
+                           help="Open this panel in Panel Builder to add/modify reagents"):
+                    # Set editing mode in session state
+                    st.session_state["editing_panel_id"] = panel_id
+                    st.session_state["panel_draft_reagents"] = []  # Will be loaded in Panel Builder
+                    st.session_state["panel_mode"] = "view"
+
+                    # Force navigation to Panel Builder (will need app.py integration)
+                    st.info("✓ Panel loaded into Panel Builder. Navigate to 'Panel Builder' tab to continue editing.")
+                    st.success(f"Panel '{panel['name']}' is ready for editing in Panel Builder")
+
             with col_btn2:
-                if st.button("✓ Done", use_container_width=True, type="primary"):
+                st.caption("💡 Use Panel Builder to add reagents")
+
+            with col_btn3:
+                if st.button("✓ Done", use_container_width=True):
                     st.session_state["panel_mode"] = "view"
                     st.rerun()
 
