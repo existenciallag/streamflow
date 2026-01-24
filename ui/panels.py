@@ -9,6 +9,7 @@ import pandas as pd
 import uuid
 from datetime import datetime
 from ui.crud_panels import query_panels
+from utils.pricing import calculate_panel_cost_current
 
 
 def delete_panel(panel_id):
@@ -199,7 +200,16 @@ def show_panels(panels_df=None):
             with col2:
                 st.metric("Sample Volume", f"{panel.get('sample_volume') or '—'} µL")
             with col3:
-                st.metric("Cost/Test", f"${panel.get('estimated_cost_per_test') or 0:.2f}")
+                # Calculate cost dynamically from current stock
+                cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
+                cost_display = f"€{cost_result['total_cost']:.2f}"
+                if not cost_result['is_complete']:
+                    cost_display += " ⚠️"
+                st.metric(
+                    "Est. Cost/Test",
+                    cost_display,
+                    help="Calculated dynamically from current cheapest stock. ⚠️ = incomplete (some reagents unavailable)"
+                )
 
             col4, col5, col6 = st.columns(3)
             with col4:
@@ -260,7 +270,6 @@ def show_panels(panels_df=None):
                     pr.volume_used,
                     pr.staining_step,
                     pr.is_intracellular,
-                    pr.cost_per_test,
                     pr.display_name
                 FROM panel_reagents pr
                 JOIN reagents r ON r.id = pr.reagent_id
@@ -276,7 +285,7 @@ def show_panels(panels_df=None):
                 # Format for display
                 display_reagents = panel_reagents[[
                     "channel", "display_name", "fluorochrome", "clone",
-                    "brand", "volume_used", "staining_step", "is_intracellular", "cost_per_test"
+                    "brand", "volume_used", "staining_step", "is_intracellular"
                 ]].copy()
 
                 display_reagents["is_intracellular"] = display_reagents["is_intracellular"].apply(
@@ -291,14 +300,16 @@ def show_panels(panels_df=None):
                     "brand": "Brand",
                     "volume_used": "Vol (µL)",
                     "staining_step": "Step",
-                    "is_intracellular": "Intra",
-                    "cost_per_test": "Cost"
+                    "is_intracellular": "Intra"
                 })
 
                 st.dataframe(display_reagents, use_container_width=True, hide_index=True)
 
-                total_cost = panel_reagents["cost_per_test"].sum()
-                st.markdown(f"### 💰 Total Cost: **${total_cost:.2f}** per test")
+                # Calculate cost dynamically from current stock
+                cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
+                cost_status = "✅" if cost_result['is_complete'] else "⚠️"
+                st.markdown(f"### 💰 {cost_status} Estimated Cost: **€{cost_result['total_cost']:.2f}** per test")
+                st.caption("Calculated from current cheapest stock. Cost updates when reagent prices change.")
 
         # =============================================================
         # EDIT MODE
@@ -436,8 +447,7 @@ def show_panels(panels_df=None):
                     pr.id as panel_reagent_id,
                     pr.display_name,
                     pr.channel_display_name as channel,
-                    pr.volume_used,
-                    pr.cost_per_test
+                    pr.volume_used
                 FROM panel_reagents pr
                 WHERE pr.panel_id = ?
                 ORDER BY pr.channel_display_name
@@ -448,11 +458,10 @@ def show_panels(panels_df=None):
 
                 # Make dataframe selectable
                 selected_reagents = st.dataframe(
-                    panel_reagents[["channel", "display_name", "volume_used", "cost_per_test"]].rename(columns={
+                    panel_reagents[["channel", "display_name", "volume_used"]].rename(columns={
                         "channel": "Channel",
                         "display_name": "Marker",
-                        "volume_used": "Vol (µL)",
-                        "cost_per_test": "Cost"
+                        "volume_used": "Vol (µL)"
                     }),
                     use_container_width=True,
                     selection_mode="multi-row",
