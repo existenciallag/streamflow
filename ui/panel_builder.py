@@ -10,6 +10,7 @@ from datetime import datetime
 import pandas as pd
 import json
 from ui.crud_panels import query_panels
+from utils.pricing import calculate_draft_panel_cost
 
 
 def get_default_cytometer():
@@ -159,12 +160,18 @@ def get_suggested_channel(cytometer_id, fluorochrome_id):
 
 
 def calculate_panel_cost(panel_reagents):
-    """Calculate total cost per test for a panel"""
-    total_cost = 0.0
-    for reagent in panel_reagents:
-        if reagent.get("cost_per_test"):
-            total_cost += reagent["cost_per_test"]
-    return total_cost
+    """
+    Calculate total cost per test for a panel DYNAMICALLY from current stock.
+
+    This replaces the old fixed-cost approach with real-time pricing
+    based on available reagent units.
+    """
+    if not panel_reagents:
+        return 0.0
+
+    # Use new dynamic pricing system
+    result = calculate_draft_panel_cost(panel_reagents, strategy='cheapest')
+    return result['total_cost']
 
 
 def render_antibody_card(ab, cytometer_id, key_prefix):
@@ -291,15 +298,6 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
             key=f"{key_prefix}_display_{ab['reagent_id']}"
         )
 
-        # Calculate cost using ACTUAL volume from reagent_units
-        cost_per_test = 0.0
-        unit_cost = 0.0
-
-        if ab['price'] and ab['avg_initial_volume'] and volume > 0:
-            # Correct calculation: price / actual_vial_volume * volume_used
-            unit_cost = ab['price'] / ab['avg_initial_volume']
-            cost_per_test = volume * unit_cost
-
         # Add button
         if st.button("➕ Add to Panel", key=f"{key_prefix}_add_{ab['reagent_id']}", type="secondary"):
             return {
@@ -315,8 +313,7 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
                 "is_surface": 0 if is_intracellular else 1,
                 "staining_step": staining_step,
                 "display_name": display_name,
-                "unit_cost": unit_cost,
-                "cost_per_test": cost_per_test,
+                # Note: costs are NOT stored here - calculated dynamically from current stock
             }
 
     return None
@@ -330,10 +327,11 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
         st.info("No reagents added yet. Add antibodies from the left panel.")
         return
 
-    # Calculate total cost
+    # Calculate total cost DYNAMICALLY from current stock
     total_cost = calculate_panel_cost(panel_reagents)
     if panel_general_reagents:
         for gr in panel_general_reagents:
+            # General reagents still use old cost if set, but should be migrated
             total_cost += gr.get("cost_per_test", 0.0)
 
     # Summary metrics
@@ -343,7 +341,11 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
     with col2:
         st.metric("General Reagents", len(panel_general_reagents))
     with col3:
-        st.metric("Cost/Test", f"${total_cost:.2f}")
+        st.metric(
+            "Est. Cost/Test",
+            f"€{total_cost:.2f}",
+            help="Calculated dynamically from current cheapest stock. Updates when reagent prices change."
+        )
 
     # Antibodies table
     if panel_reagents:
@@ -360,7 +362,6 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
                 "Vol (µL)": f"{reagent['volume_per_test']:.2f}",
                 "Step": reagent['staining_step'],
                 "Intra": "✓" if reagent['is_intracellular'] else "",
-                "Cost": f"${reagent['cost_per_test']:.2f}",
                 "idx": i
             })
 
@@ -368,7 +369,7 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
 
         # Display table with selection for deletion
         selected = st.dataframe(
-            df[["Channel", "Marker", "Vol (µL)", "Step", "Intra", "Cost"]],
+            df[["Channel", "Marker", "Vol (µL)", "Step", "Intra"]],
             use_container_width=True,
             selection_mode="multi-row",
             on_select="rerun",
@@ -445,11 +446,11 @@ def save_panel_updates(panel_id, panel_reagents):
                 INSERT INTO panel_reagents (
                     id, panel_id, reagent_id,
                     optical_channel_id, channel_display_name,
-                    volume_used, unit_cost, cost_per_test,
+                    volume_used,
                     is_intracellular, is_surface, staining_step,
                     display_name,
                     assigned_at, added_by
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 str(uuid.uuid4()),
                 panel_id,
@@ -457,8 +458,6 @@ def save_panel_updates(panel_id, panel_reagents):
                 reagent["optical_channel_id"],
                 reagent["channel_display_name"],
                 reagent["volume_per_test"],
-                reagent["unit_cost"],
-                reagent["cost_per_test"],
                 reagent["is_intracellular"],
                 reagent["is_surface"],
                 reagent["staining_step"],
@@ -467,11 +466,11 @@ def save_panel_updates(panel_id, panel_reagents):
                 "system"
             ), commit=True)
 
-        # Update panel cost
-        total_cost = calculate_panel_cost(panel_reagents)
+        # Note: Panel cost is NOT stored - calculated dynamically from current stock
+        # No UPDATE panels SET estimated_cost_per_test needed
         query_panels(
-            "UPDATE panels SET estimated_cost_per_test = ?, updated_at = ? WHERE id = ?",
-            (total_cost, now, panel_id),
+            "UPDATE panels SET updated_at = ? WHERE id = ?",
+            (now, panel_id),
             commit=True
         )
 
@@ -810,11 +809,11 @@ def create_panel():
                         INSERT INTO panel_reagents (
                             id, panel_id, reagent_id,
                             optical_channel_id, channel_display_name,
-                            volume_used, unit_cost, cost_per_test,
+                            volume_used,
                             is_intracellular, is_surface, staining_step,
                             display_name,
                             assigned_at, added_by
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         str(uuid.uuid4()),
                         panel_id,
@@ -822,8 +821,6 @@ def create_panel():
                         reagent["optical_channel_id"],
                         reagent["channel_display_name"],
                         reagent["volume_per_test"],
-                        reagent["unit_cost"],
-                        reagent["cost_per_test"],
                         reagent["is_intracellular"],
                         reagent["is_surface"],
                         reagent["staining_step"],
@@ -834,7 +831,7 @@ def create_panel():
 
                 st.success(f"✅ Panel '{panel_name}' created successfully!")
                 st.info(f"Panel ID: {panel_id}")
-                st.info(f"Total Cost: ${total_cost:.2f} per test")
+                st.info(f"Est. Cost: €{total_cost:.2f} per test (from current stock)")
 
                 # Clear draft
                 st.session_state["panel_draft_reagents"] = []
