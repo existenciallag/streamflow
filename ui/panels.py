@@ -13,16 +13,50 @@ from utils.pricing import calculate_panel_cost_current
 
 
 def delete_panel(panel_id):
-    """Delete a panel and all its reagents"""
+    """Delete a panel and all its reagents with explicit transaction handling"""
+    import sqlite3
+    from models.loaders import DB_PATH
+
     try:
-        # Delete panel reagents first (cascade)
-        query_panels("DELETE FROM panel_reagents WHERE panel_id = ?", (panel_id,), commit=True)
+        # Use explicit transaction for deletion
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+
+        # Verify panel exists
+        cursor.execute("SELECT name FROM panels WHERE id = ?", (panel_id,))
+        panel = cursor.fetchone()
+        if not panel:
+            conn.close()
+            return False, "Panel not found"
+
+        panel_name = panel[0]
+
+        # Delete panel reagents first (foreign key constraint)
+        cursor.execute("DELETE FROM panel_reagents WHERE panel_id = ?", (panel_id,))
+        reagents_deleted = cursor.rowcount
 
         # Delete panel
-        query_panels("DELETE FROM panels WHERE id = ?", (panel_id,), commit=True)
+        cursor.execute("DELETE FROM panels WHERE id = ?", (panel_id,))
+        panel_deleted = cursor.rowcount
 
-        return True, "Panel deleted successfully"
+        # Commit transaction
+        conn.commit()
+
+        # Verify deletion
+        cursor.execute("SELECT COUNT(*) FROM panels WHERE id = ?", (panel_id,))
+        verify_count = cursor.fetchone()[0]
+
+        conn.close()
+
+        if verify_count == 0:
+            return True, f"Panel '{panel_name}' deleted successfully ({reagents_deleted} reagents removed)"
+        else:
+            return False, "Panel deletion was not committed to database"
+
     except Exception as e:
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
         return False, f"Error deleting panel: {e}"
 
 

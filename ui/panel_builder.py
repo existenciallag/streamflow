@@ -88,12 +88,15 @@ def get_reagents_with_details():
                 THEN ru.expiration_date
             END) as earliest_expiration,
 
-            -- Average volume for cost calculation (only available vials)
-            AVG(CASE
-                WHEN LOWER(ru.status) IN ('stored', 'in use')
-                AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
-                THEN ru.initial_volume
-            END) as avg_initial_volume
+            -- Average volume for cost calculation (prefer available, fallback to all)
+            COALESCE(
+                AVG(CASE
+                    WHEN LOWER(ru.status) IN ('stored', 'in use')
+                    AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
+                    THEN ru.initial_volume
+                END),
+                AVG(ru.initial_volume)
+            ) as avg_initial_volume
 
         FROM reagents r
         JOIN fluorochromes f ON f.id = r.fluorochrome
