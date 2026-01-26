@@ -93,14 +93,15 @@ def run_crud():
     left, right = st.columns([1.2, 2])
 
     # ========================================================
-    #                       LISTA
+    #                    LISTA DE ANTICUERPOS
     # ========================================================
 
     with left:
 
-        st.subheader("Anticuerpos")
+        st.markdown("### 📋 Lista de Anticuerpos")
+        st.markdown("")  # Spacing
 
-        search = st.text_input("Buscar").lower()
+        search = st.text_input("🔍 Buscar", placeholder="CD3, PE, Biolegend...").lower()
 
         df = reagents.copy()
 
@@ -122,114 +123,143 @@ def run_crud():
             table,
             use_container_width=True,
             selection_mode="single-row",
-            on_select="rerun"
+            on_select="rerun",
+            hide_index=True
         )
 
-        # ---------- NUEVO REACTIVO ----------
+        # ---------- NUEVO ANTICUERPO ----------
 
+        st.markdown("")  # Spacing
         st.markdown("---")
-        st.subheader("Nuevo anticuerpo")
+        st.markdown("")  # Spacing
 
-        with st.form("new_reagent"):
+        with st.expander("➕ Crear Nuevo Anticuerpo", expanded=False):
+            with st.form("new_reagent"):
 
-            name = st.text_input("CD")
-            clone = st.text_input("Clon")
-            catalog = st.text_input("Catálogo")
+                st.markdown("**Información del reactivo**")
+                name = st.text_input("CD *", placeholder="Ej: CD3")
+                clone = st.text_input("Clon", placeholder="Ej: UCHT1")
+                catalog = st.text_input("Catálogo", placeholder="Ej: 300459")
 
-            fluorochrome = st.selectbox(
-                "Fluorocromo",
-                fluoros["id"],
-                format_func=lambda x: fluoro_map.get(x, x)
-            )
+                st.markdown("")  # Spacing
+                st.markdown("**Proveedor y fluorocromo**")
 
-            brand_id = st.selectbox(
-                "Marca",
-                brands["id"],
-                format_func=lambda x: brand_map.get(x, x)
-            )
+                col1, col2 = st.columns(2)
+                with col1:
+                    fluorochrome = st.selectbox(
+                        "Fluorocromo *",
+                        fluoros["id"],
+                        format_func=lambda x: fluoro_map.get(x, x)
+                    )
 
-            price = st.number_input("Precio referencia", 0.0)
+                with col2:
+                    brand_id = st.selectbox(
+                        "Marca *",
+                        brands["id"],
+                        format_func=lambda x: brand_map.get(x, x)
+                    )
 
-            if st.form_submit_button("Crear"):
+                st.markdown("")  # Spacing
+                price = st.number_input("Precio referencia ($)", 0.0, step=10.0)
 
-                insert_db("reagents", {
-                    "name": name,
-                    "clone": clone,
-                    "catalog_number": catalog,
-                    "fluorochrome": fluorochrome,
-                    "brand_id": brand_id,
-                    "price": price
-                })
+                st.markdown("")  # Spacing
+                if st.form_submit_button("✓ Crear Anticuerpo", use_container_width=True):
 
-                st.rerun()
+                    if not name:
+                        st.error("El campo CD es obligatorio")
+                    else:
+                        insert_db("reagents", {
+                            "name": name,
+                            "clone": clone,
+                            "catalog_number": catalog,
+                            "fluorochrome": fluorochrome,
+                            "brand_id": brand_id,
+                            "price": price
+                        })
+
+                        st.rerun()
 
     # ========================================================
-    #                       DETALLE
+    #                  DETALLE DEL ANTICUERPO
     # ========================================================
 
     with right:
 
         if not selected or not selected["selection"]["rows"]:
-            st.info("Seleccione un anticuerpo")
+            st.info("👈 Seleccione un anticuerpo de la lista para ver detalles y gestionar viales")
             return
 
         r = df.iloc[selected["selection"]["rows"][0]]
 
-        st.subheader(
-            f"{r['name']} – {r['Fluorocromo']} – {r['Marca']} – clon {r['clone']}"
-        )
+        # ---------- HEADER ----------
+        st.markdown(f"### 🔬 {r['name']} – {r['Fluorocromo']}")
+        st.markdown(f"**Marca:** {r['Marca']} | **Clon:** {r['clone']}")
+        st.markdown("")  # Spacing
 
-        # ---------- EDITAR REAGENT ----------
+        # ---------- EDITAR ANTICUERPO ----------
 
-        with st.form("edit_reagent"):
+        with st.expander("✏️ Editar Información del Anticuerpo", expanded=False):
+            with st.form("edit_reagent"):
 
-            c1, c2 = st.columns(2)
+                c1, c2 = st.columns(2)
 
-            name = c1.text_input("CD", r["name"])
-            clone = c1.text_input("Clon", r["clone"])
-            catalog = c1.text_input("Catálogo", r["catalog_number"])
+                with c1:
+                    st.markdown("**Identificación**")
+                    name = st.text_input("CD", r["name"])
+                    clone = st.text_input("Clon", r["clone"])
+                    catalog = st.text_input("Catálogo", r["catalog_number"])
 
-            fluorochrome = c2.selectbox(
-                "Fluorocromo",
-                fluoros["id"],
-                index=list(fluoros["id"]).index(r["fluorochrome"]),
-                format_func=lambda x: fluoro_map.get(x, x)
-            )
+                with c2:
+                    st.markdown("**Proveedor y especificaciones**")
+                    fluorochrome = st.selectbox(
+                        "Fluorocromo",
+                        fluoros["id"],
+                        index=list(fluoros["id"]).index(r["fluorochrome"]),
+                        format_func=lambda x: fluoro_map.get(x, x)
+                    )
 
-            brand_id = c2.selectbox(
-                "Marca",
-                brands["id"],
-                index=list(brands["id"]).index(r["brand_id"]),
-                format_func=lambda x: brand_map.get(x, x)
-            )
+                    brand_id = st.selectbox(
+                        "Marca",
+                        brands["id"],
+                        index=list(brands["id"]).index(r["brand_id"]),
+                        format_func=lambda x: brand_map.get(x, x)
+                    )
 
-            price = c2.number_input(
-                "Precio",
-                value=float(r["price"] or 0)
-            )
+                    price = st.number_input(
+                        "Precio referencia ($)",
+                        value=float(r["price"] or 0),
+                        step=10.0
+                    )
 
-            if st.form_submit_button("Guardar cambios"):
+                st.markdown("")  # Spacing
+                if st.form_submit_button("✓ Guardar Cambios", use_container_width=True):
 
-                update_db("reagents", {
-                    "name": name,
-                    "clone": clone,
-                    "catalog_number": catalog,
-                    "fluorochrome": fluorochrome,
-                    "brand_id": brand_id,
-                    "price": price
-                }, r["id"])
+                    update_db("reagents", {
+                        "name": name,
+                        "clone": clone,
+                        "catalog_number": catalog,
+                        "fluorochrome": fluorochrome,
+                        "brand_id": brand_id,
+                        "price": price
+                    }, r["id"])
 
-                st.rerun()
+                    st.rerun()
+
+        st.markdown("")  # Spacing
 
         # ====================================================
-        #                       VIALES
+        #                  GESTIÓN DE VIALES
         # ====================================================
 
-        st.markdown("## Viales")
+        st.markdown("---")
+        st.markdown("### 🧪 Gestión de Viales")
+        st.markdown("")  # Spacing
 
         r_units = units[units["reagent_id"] == r["id"]]
 
         if not r_units.empty:
+
+            st.markdown(f"**{len(r_units)} viales registrados**")
 
             display = r_units[[
                 "lot", "expiration_date",
@@ -245,12 +275,17 @@ def run_crud():
                 display,
                 use_container_width=True,
                 selection_mode="single-row",
-                on_select="rerun"
+                on_select="rerun",
+                hide_index=True
             )
+
+            st.markdown("")  # Spacing
 
             if sel_u and sel_u["selection"]["rows"]:
 
                 u = r_units.iloc[sel_u["selection"]["rows"][0]]
+
+                st.markdown(f"**Editando vial:** Lote {u['lot']}")
 
                 # -------- NORMALIZAR ESTADO (FIX BUG) --------
 
@@ -265,30 +300,37 @@ def run_crud():
 
                     c1, c2 = st.columns(2)
 
-                    vol = c1.number_input(
-                        "Volumen",
-                        value=float(u["initial_volume"])
-                    )
+                    with c1:
+                        st.markdown("**Volumen y fechas**")
+                        vol = st.number_input(
+                            "Volumen inicial (µL)",
+                            value=float(u["initial_volume"]),
+                            step=10.0
+                        )
 
-                    arrival = c1.date_input(
-                        "Llegada",
-                        value=pd.to_datetime(u["arrival_date"]).date()
-                    )
+                        arrival = st.date_input(
+                            "Fecha de llegada",
+                            value=pd.to_datetime(u["arrival_date"]).date()
+                        )
 
-                    expiration = c2.date_input(
-                        "Vencimiento",
-                        value=pd.to_datetime(u["expiration_date"]).date()
-                    )
+                    with c2:
+                        st.markdown("**Estado y lote**")
+                        expiration = st.date_input(
+                            "Fecha de vencimiento",
+                            value=pd.to_datetime(u["expiration_date"]).date()
+                        )
 
-                    status = c2.selectbox(
-                        "Estado",
-                        STATUS_VALUES,
-                        index=STATUS_VALUES.index(current_status)
-                    )
+                        status = st.selectbox(
+                            "Estado actual",
+                            STATUS_VALUES,
+                            index=STATUS_VALUES.index(current_status),
+                            help="Stored: almacenado | In Use: en uso | Closed: terminado"
+                        )
 
-                    lot = c2.text_input("Lote", u["lot"])
+                        lot = st.text_input("Número de lote", u["lot"])
 
-                    if st.form_submit_button("Guardar vial"):
+                    st.markdown("")  # Spacing
+                    if st.form_submit_button("✓ Actualizar Vial", use_container_width=True):
 
                         # ----- HISTORIAL -----
 
@@ -320,6 +362,8 @@ def run_crud():
 
                         st.rerun()
 
+                st.markdown("")  # Spacing
+
                 # -------- HISTORIAL --------
 
                 hist = query("""
@@ -330,32 +374,58 @@ def run_crud():
                 """, (u["id"],))
 
                 if not hist.empty:
-                    st.markdown("### Historial")
-                    st.dataframe(hist, use_container_width=True)
+                    with st.expander(f"📜 Historial de Cambios ({len(hist)} registros)", expanded=False):
+                        hist_display = hist.rename(columns={
+                            "field": "Campo",
+                            "old_value": "Valor anterior",
+                            "new_value": "Valor nuevo",
+                            "changed_at": "Fecha"
+                        })
+                        st.dataframe(hist_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay viales registrados para este anticuerpo")
 
         # ---------- NUEVO VIAL ----------
 
-        st.markdown("### Nuevo vial")
+        st.markdown("")  # Spacing
+        st.markdown("---")
+        st.markdown("")  # Spacing
 
-        with st.form("new_unit"):
+        with st.expander("➕ Agregar Nuevo Vial", expanded=False):
+            with st.form("new_unit"):
 
-            c1, c2 = st.columns(2)
+                c1, c2 = st.columns(2)
 
-            vol = c1.number_input("Volumen (µL)", 0.0)
-            arrival = c1.date_input("Llegada")
-            expiration = c2.date_input("Vencimiento")
-            status = c2.selectbox("Estado", STATUS_VALUES)
-            lot = c2.text_input("Lote")
+                with c1:
+                    st.markdown("**Volumen y fechas**")
+                    vol = st.number_input("Volumen inicial (µL) *", 0.0, step=10.0)
+                    arrival = st.date_input("Fecha de llegada")
 
-            if st.form_submit_button("Crear vial"):
+                with c2:
+                    st.markdown("**Estado y lote**")
+                    expiration = st.date_input("Fecha de vencimiento")
+                    status = st.selectbox(
+                        "Estado inicial",
+                        STATUS_VALUES,
+                        help="Stored: almacenado | In Use: en uso | Closed: terminado"
+                    )
+                    lot = st.text_input("Número de lote *", placeholder="Ej: B123456")
 
-                insert_db("reagent_units", {
-                    "reagent_id": r["id"],
-                    "initial_volume": vol,
-                    "arrival_date": str(arrival),
-                    "expiration_date": str(expiration),
-                    "status": status,
-                    "lot": lot
-                })
+                st.markdown("")  # Spacing
+                if st.form_submit_button("✓ Crear Vial", use_container_width=True):
 
-                st.rerun()
+                    if vol <= 0:
+                        st.error("El volumen debe ser mayor a 0")
+                    elif not lot:
+                        st.error("El número de lote es obligatorio")
+                    else:
+                        insert_db("reagent_units", {
+                            "reagent_id": r["id"],
+                            "initial_volume": vol,
+                            "arrival_date": str(arrival),
+                            "expiration_date": str(expiration),
+                            "status": status,
+                            "lot": lot
+                        })
+
+                        st.rerun()
