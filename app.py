@@ -30,6 +30,7 @@ from ui.panel_builder import create_panel  # <-- Panel Builder
 # 👉 NEW: Clinical & Economic sections
 from ui.clinical import run_clinical
 from ui.economic import run_economic
+from ui.settings import run_settings
 
 # -----------------------------
 # Configuración página
@@ -40,33 +41,90 @@ st.set_page_config(
 )
 
 # -----------------------------
+# Language support
+# -----------------------------
+if 'language' not in st.session_state:
+    st.session_state['language'] = 'en'  # Default to English
+
+lang = st.session_state['language']
+
+# Define navigation labels in both languages
+nav_labels = {
+    'en': {
+        'operational': '--- OPERATIONAL ---',
+        'dashboard': 'Dashboard',
+        'panels': 'Panels',
+        'panel_builder': 'Panel Builder',
+        'clinical': 'Clinical',
+        'economic': 'Economic',
+        'reagents': 'Reagents',
+        'technical': '--- TECHNICAL ---',
+        'database': 'Database',
+        'advanced_inventory': 'Advanced Inventory',
+        'settings': 'Settings'
+    },
+    'es': {
+        'operational': '--- OPERACIONAL ---',
+        'dashboard': 'Dashboard',
+        'panels': 'Paneles',
+        'panel_builder': 'Constructor de Paneles',
+        'clinical': 'Clínica',
+        'economic': 'Económico',
+        'reagents': 'Reactivos',
+        'technical': '--- TÉCNICO ---',
+        'database': 'Base de Datos',
+        'advanced_inventory': 'Inventario Avanzado',
+        'settings': 'Configuración'
+    }
+}
+
+labels = nav_labels[lang]
+
+# -----------------------------
 # Sidebar navegación
 # -----------------------------
 page = st.sidebar.radio(
-    "Navegación",
+    "Navigation" if lang == 'en' else "Navegación",
     [
-        "Dashboard",
-        "Paneles",
-        "Panel Builder",
-        "🔬 Clinical",
-        "💰 Economic",
-        "CRUD",
-        "Base de datos",
-        "Inventario Avanzado",
+        labels['operational'],
+        labels['dashboard'],
+        labels['panels'],
+        labels['panel_builder'],
+        labels['clinical'],
+        labels['economic'],
+        labels['reagents'],
+        labels['technical'],
+        labels['database'],
+        labels['advanced_inventory'],
+        labels['settings']
     ]
 )
 
 st.title("Inventario de Citometría")
 
 # -----------------------------
-# Base de datos viewer
+# Handle section separators (they can't be clicked)
 # -----------------------------
-if page == "Base de datos":
+if page in [labels['operational'], labels['technical']]:
+    st.warning("Please select a specific page from the menu")
+    st.stop()
+
+# -----------------------------
+# Settings
+# -----------------------------
+if page == labels['settings']:
+    run_settings()
+    st.stop()
+
+# -----------------------------
+# Database viewer
+# -----------------------------
+if page == labels['database']:
     show_db_viewer()
     st.stop()
 
 # -----------------------------
-# Cargar datos
+# Load data (for pages that need it)
 # -----------------------------
 data = load_all()
 
@@ -80,44 +138,44 @@ inventory = build_inventory(
 )
 
 # -----------------------------
-# CRUD
+# Reagents (CRUD)
 # -----------------------------
-if page == "CRUD":
+if page == labels['reagents']:
     run_crud()
     st.stop()
 
 # -----------------------------
-# PANELES — SOLO VISUALIZACION
+# Panels (View/Edit)
 # -----------------------------
-if page == "Paneles":
+if page == labels['panels']:
     show_panels(data)
     st.stop()
 
 # -----------------------------
-# PANEL BUILDER — CREACION
+# Panel Builder
 # -----------------------------
-if page == "Panel Builder":
+if page == labels['panel_builder']:
     create_panel()
     st.stop()
 
 # -----------------------------
-# CLINICAL SECTION
+# Clinical Section
 # -----------------------------
-if page == "🔬 Clinical":
+if page == labels['clinical']:
     run_clinical()
     st.stop()
 
 # -----------------------------
-# ECONOMIC SECTION
+# Economic Section
 # -----------------------------
-if page == "💰 Economic":
+if page == labels['economic']:
     run_economic()
     st.stop()
 
 # -----------------------------
-# Inventario avanzado
+# Advanced Inventory
 # -----------------------------
-if page == "Inventario Avanzado":
+if page == labels['advanced_inventory']:
     advanced_inventory_view(inventory)
     st.stop()
 

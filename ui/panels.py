@@ -13,13 +13,14 @@ from utils.pricing import calculate_panel_cost_current
 
 
 def delete_panel(panel_id):
-    """Delete a panel and all its reagents with explicit transaction handling"""
+    """Delete a panel and ALL related records with explicit transaction handling"""
     import sqlite3
     from models.loaders import DB_PATH
 
     try:
         # Use explicit transaction for deletion
         conn = sqlite3.connect(DB_PATH)
+        conn.execute("PRAGMA foreign_keys = ON")  # Enable foreign keys
         cursor = conn.cursor()
 
         # Verify panel exists
@@ -31,11 +32,32 @@ def delete_panel(panel_id):
 
         panel_name = panel[0]
 
-        # Delete panel reagents first (foreign key constraint)
+        # Delete ALL related records manually (to be absolutely sure)
+        # Order matters: children first, parent last
+
+        # 1. Delete panel_reagents
         cursor.execute("DELETE FROM panel_reagents WHERE panel_id = ?", (panel_id,))
         reagents_deleted = cursor.rowcount
 
-        # Delete panel
+        # 2. Delete panel_general_reagents (if exists)
+        cursor.execute("DELETE FROM panel_general_reagents WHERE panel_id = ?", (panel_id,))
+
+        # 3. Delete panel_classifications
+        cursor.execute("DELETE FROM panel_classifications WHERE panel_id = ?", (panel_id,))
+
+        # 4. Delete panel_versions
+        cursor.execute("DELETE FROM panel_versions WHERE panel_id = ?", (panel_id,))
+
+        # 5. Delete panel_status_history
+        cursor.execute("DELETE FROM panel_status_history WHERE panel_id = ?", (panel_id,))
+
+        # 6. Delete case_panels (if any - these link to clinical cases)
+        cursor.execute("DELETE FROM case_panels WHERE panel_id = ?", (panel_id,))
+
+        # 7. Delete panel_usage_log (if any - economic tracking)
+        cursor.execute("DELETE FROM panel_usage_log WHERE panel_id = ?", (panel_id,))
+
+        # 8. Finally, delete the panel itself
         cursor.execute("DELETE FROM panels WHERE id = ?", (panel_id,))
         panel_deleted = cursor.rowcount
 
