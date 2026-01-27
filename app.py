@@ -27,6 +27,10 @@ from utils.dashboard_metrics import (
 from ui.panels import show_panels
 from ui.panel_builder import create_panel  # <-- Panel Builder
 
+# 👉 NEW: Clinical & Economic sections
+from ui.clinical import run_clinical
+from ui.economic import run_economic
+
 # -----------------------------
 # Configuración página
 # -----------------------------
@@ -40,7 +44,16 @@ st.set_page_config(
 # -----------------------------
 page = st.sidebar.radio(
     "Navegación",
-    ["Dashboard", "Paneles", "Panel Builder", "CRUD", "Base de datos", "Inventario Avanzado",]
+    [
+        "Dashboard",
+        "Paneles",
+        "Panel Builder",
+        "🔬 Clinical",
+        "💰 Economic",
+        "CRUD",
+        "Base de datos",
+        "Inventario Avanzado",
+    ]
 )
 
 st.title("Inventario de Citometría")
@@ -85,6 +98,20 @@ if page == "Paneles":
 # -----------------------------
 if page == "Panel Builder":
     create_panel()
+    st.stop()
+
+# -----------------------------
+# CLINICAL SECTION
+# -----------------------------
+if page == "🔬 Clinical":
+    run_clinical()
+    st.stop()
+
+# -----------------------------
+# ECONOMIC SECTION
+# -----------------------------
+if page == "💰 Economic":
+    run_economic()
     st.stop()
 
 # -----------------------------
