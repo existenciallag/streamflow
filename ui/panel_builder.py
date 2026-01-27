@@ -550,6 +550,55 @@ def create_panel():
         )
 
     # ============================================================
+    # PANEL CLASSIFICATION (Areas & Disease Categories)
+    # ============================================================
+    st.markdown("---")
+    st.markdown("### 📁 Classification")
+
+    from utils.categories import get_all_areas, get_all_disease_categories
+
+    # Get available areas and categories
+    areas_df = get_all_areas()
+    if areas_df is None or areas_df.empty:
+        st.warning("No clinical areas configured")
+        selected_area_id = None
+        selected_disease_category_id = None
+    else:
+        col1, col2 = st.columns(2)
+
+        with col1:
+            area_options = ["(None)"] + list(areas_df["name"])
+            area_ids = [None] + list(areas_df["id"])
+
+            selected_area_name = st.selectbox(
+                "Clinical Area *",
+                options=area_options,
+                help="Primary clinical area for this panel"
+            )
+            selected_area_id = area_ids[area_options.index(selected_area_name)]
+
+        with col2:
+            # Get disease categories for selected area
+            if selected_area_id:
+                categories_df = get_all_disease_categories(selected_area_id)
+            else:
+                categories_df = pd.DataFrame()
+
+            if categories_df is not None and not categories_df.empty:
+                category_options = ["(None)"] + list(categories_df["name"])
+                category_ids = [None] + list(categories_df["id"])
+
+                selected_disease_category_name = st.selectbox(
+                    "Disease Category",
+                    options=category_options,
+                    help="Specific disease category (if applicable)"
+                )
+                selected_disease_category_id = category_ids[category_options.index(selected_disease_category_name)]
+            else:
+                st.selectbox("Disease Category", options=["(No categories for this area)"], disabled=True)
+                selected_disease_category_id = None
+
+    # ============================================================
     # CYTOMETER SELECTION (Default: CytoFLEX)
     # ============================================================
     st.markdown("---")
@@ -831,6 +880,11 @@ def create_panel():
                         now,
                         "system"
                     ), commit=True)
+
+                # Set panel classification (area + disease category)
+                if selected_area_id:
+                    from utils.categories import set_panel_classification
+                    set_panel_classification(panel_id, selected_area_id, selected_disease_category_id, is_primary=True)
 
                 st.success(f"✅ Panel '{panel_name}' created successfully!")
                 st.info(f"Panel ID: {panel_id}")

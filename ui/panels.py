@@ -125,6 +125,7 @@ def show_panels(panels_df=None):
             p.status,
             p.sample_type,
             p.sample_volume,
+            p.washed_sample,
             p.clinical_indication,
             p.estimated_cost_per_test,
             c.name as cytometer_name,
@@ -200,8 +201,14 @@ def show_panels(panels_df=None):
 
             with col_h1:
                 st.markdown(f"## {panel['name']}")
-                status_color = {"draft": "🟡", "validated": "🟢", "archived": "🔴"}.get(panel['status'], "⚪")
-                st.caption(f"{status_color} {panel['status'].upper()} · v{panel['version']}")
+                status_color = {
+                    "draft": "🟡",
+                    "validated": "🟢",
+                    "active": "🟢",
+                    "deprecated": "🟠",
+                    "archived": "🔴"
+                }.get(panel.get('status', 'draft').lower(), "⚪")
+                st.caption(f"{status_color} {panel.get('status', 'draft').upper()} · v{panel.get('version', '1.0.0')}")
 
             with col_h2:
                 if st.button("✏️ Edit", use_container_width=True):
@@ -254,6 +261,19 @@ def show_panels(panels_df=None):
                 st.metric("Washed Sample", "Yes" if panel.get("washed_sample") else "No")
             with col6:
                 st.metric("Created", panel.get("created_at", "—")[:10] if panel.get("created_at") else "—")
+
+            # Display categories
+            from utils.categories import get_primary_area, get_primary_disease_category
+            area_id, area_name = get_primary_area(panel_id)
+            disease_id, disease_name = get_primary_disease_category(panel_id)
+
+            if area_name or disease_name:
+                st.markdown("---")
+                col_cat1, col_cat2 = st.columns(2)
+                with col_cat1:
+                    st.metric("Clinical Area", area_name or "—")
+                with col_cat2:
+                    st.metric("Disease Category", disease_name or "—")
 
             if panel.get("clinical_indication"):
                 st.markdown("**Clinical Indication:**")
@@ -351,6 +371,53 @@ def show_panels(panels_df=None):
                     cost_status = "✅" if cost_result.get('is_complete', True) else "⚠️"
                     st.markdown(f"### 💰 {cost_status} Estimated Cost: **${cost_result.get('total_cost', 0.0):.2f}** per test")
                     st.caption("Calculated from current cheapest stock. Cost updates when reagent prices change.")
+
+            # Version and Status History
+            st.markdown("---")
+            col_h1, col_h2 = st.columns(2)
+
+            with col_h1:
+                # Version History
+                version_history = query_panels("""
+                    SELECT version, previous_version, status, changes_summary, created_at
+                    FROM panel_versions
+                    WHERE panel_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT 10
+                """, (panel_id,))
+
+                if version_history is not None and not version_history.empty:
+                    with st.expander(f"📜 Version History ({len(version_history)} versions)", expanded=False):
+                        for _, ver in version_history.iterrows():
+                            st.caption(f"**v{ver['version']}** • {ver['created_at'][:10]}")
+                            if ver['previous_version']:
+                                st.text(f"  From: v{ver['previous_version']}")
+                            if ver['changes_summary']:
+                                st.text(f"  {ver['changes_summary']}")
+                            st.markdown("---")
+                else:
+                    st.caption("No version history available")
+
+            with col_h2:
+                # Status History
+                status_history = query_panels("""
+                    SELECT from_status, to_status, reason, changed_at
+                    FROM panel_status_history
+                    WHERE panel_id = ?
+                    ORDER BY changed_at DESC
+                    LIMIT 10
+                """, (panel_id,))
+
+                if status_history is not None and not status_history.empty:
+                    with st.expander(f"🔄 Status History ({len(status_history)} changes)", expanded=False):
+                        for _, status in status_history.iterrows():
+                            from_st = status['from_status'] or 'None'
+                            st.caption(f"**{from_st} → {status['to_status']}** • {status['changed_at'][:10]}")
+                            if status['reason']:
+                                st.text(f"  {status['reason']}")
+                            st.markdown("---")
+                else:
+                    st.caption("No status history available")
 
         # =============================================================
         # EDIT MODE
@@ -450,6 +517,55 @@ def show_panels(panels_df=None):
                         key="edit_analysis_status"
                     )
 
+                # Version and Status Management
+                st.markdown("---")
+                st.markdown("**Version & Status Management**")
+
+                v_col1, v_col2 = st.columns(2)
+
+                with v_col1:
+                    st.caption(f"Current Version: v{full_panel.get('version', '1.0.0')}")
+                    version_action = st.selectbox(
+                        "Version Update",
+                        ["Keep current", "Patch (0.0.X) - Bug fixes", "Minor (0.X.0) - New features", "Major (X.0.0) - Breaking changes"],
+                        key="version_action"
+                    )
+                    if version_action != "Keep current":
+                        version_notes = st.text_area(
+                            "Version Notes",
+                            placeholder="Describe what changed in this version...",
+                            key="version_notes",
+                            height=60
+                        )
+
+                with v_col2:
+                    current_status = full_panel.get('status', 'draft')
+                    st.caption(f"Current Status: {current_status.upper()}")
+
+                    # Define valid status transitions
+                    status_transitions = {
+                        'draft': ['draft', 'validated', 'archived'],
+                        'validated': ['validated', 'active', 'draft', 'archived'],
+                        'active': ['active', 'deprecated', 'archived'],
+                        'deprecated': ['deprecated', 'archived', 'active'],
+                        'archived': ['archived']
+                    }
+
+                    valid_statuses = status_transitions.get(current_status, ['draft', 'validated', 'active', 'deprecated', 'archived'])
+                    new_status = st.selectbox(
+                        "Status",
+                        valid_statuses,
+                        index=valid_statuses.index(current_status) if current_status in valid_statuses else 0,
+                        key="new_status"
+                    )
+
+                    if new_status != current_status:
+                        status_reason = st.text_input(
+                            "Reason for status change",
+                            placeholder="Why is the status changing?",
+                            key="status_reason"
+                        )
+
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
                     save_clicked = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
@@ -457,6 +573,70 @@ def show_panels(panels_df=None):
                     cancel_clicked = st.form_submit_button("❌ Cancel", use_container_width=True)
 
             if save_clicked:
+                # Handle version update
+                from datetime import datetime
+                import uuid as uuid_module
+
+                current_version = full_panel.get('version', '1.0.0')
+                new_version = current_version
+
+                if version_action != "Keep current":
+                    # Parse current version
+                    try:
+                        major, minor, patch = map(int, current_version.split('.'))
+
+                        if "Patch" in version_action:
+                            patch += 1
+                        elif "Minor" in version_action:
+                            minor += 1
+                            patch = 0
+                        elif "Major" in version_action:
+                            major += 1
+                            minor = 0
+                            patch = 0
+
+                        new_version = f"{major}.{minor}.{patch}"
+
+                        # Record version history
+                        query_panels("""
+                            INSERT INTO panel_versions (id, panel_id, version, previous_version, status, changes_summary, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            str(uuid_module.uuid4()),
+                            panel_id,
+                            new_version,
+                            current_version,
+                            new_status,
+                            version_notes if 'version_notes' in st.session_state else "",
+                            datetime.utcnow().isoformat()
+                        ), commit=True)
+
+                        # Update panel version
+                        query_panels("UPDATE panels SET version = ?, updated_at = ? WHERE id = ?",
+                                   (new_version, datetime.utcnow().isoformat(), panel_id), commit=True)
+
+                    except ValueError:
+                        st.error("Invalid version format")
+
+                # Handle status change
+                if new_status != current_status:
+                    query_panels("""
+                        INSERT INTO panel_status_history (id, panel_id, from_status, to_status, reason, changed_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, (
+                        str(uuid_module.uuid4()),
+                        panel_id,
+                        current_status,
+                        new_status,
+                        status_reason if 'status_reason' in st.session_state else "",
+                        datetime.utcnow().isoformat()
+                    ), commit=True)
+
+                    # Update panel status
+                    query_panels("UPDATE panels SET status = ?, updated_at = ? WHERE id = ?",
+                               (new_status, datetime.utcnow().isoformat(), panel_id), commit=True)
+
+                # Update metadata
                 success, message = update_panel_metadata(
                     panel_id, new_name, new_description, new_sample_type, new_sample_volume,
                     1 if new_washed_sample else 0, new_clinical_indication,
@@ -466,6 +646,10 @@ def show_panels(panels_df=None):
                 )
 
                 if success:
+                    if new_version != current_version:
+                        st.success(f"✅ Panel updated to version {new_version}")
+                    if new_status != current_status:
+                        st.success(f"✅ Panel status changed to {new_status}")
                     st.success(message)
                     st.session_state["panel_mode"] = "view"
                     st.rerun()
