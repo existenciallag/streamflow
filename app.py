@@ -43,42 +43,20 @@ st.set_page_config(
 # -----------------------------
 # Language support
 # -----------------------------
+from utils.translations import NAV, DASHBOARD, CLINICAL, PANELS, SETTINGS, COMMON
+
 if 'language' not in st.session_state:
     st.session_state['language'] = 'en'  # Default to English
 
 lang = st.session_state['language']
 
-# Define navigation labels in both languages
-nav_labels = {
-    'en': {
-        'operational': '--- OPERATIONAL ---',
-        'dashboard': 'Dashboard',
-        'panels': 'Panels',
-        'panel_builder': 'Panel Builder',
-        'clinical': 'Clinical',
-        'economic': 'Economic',
-        'reagents': 'Reagents',
-        'technical': '--- TECHNICAL ---',
-        'database': 'Database',
-        'advanced_inventory': 'Advanced Inventory',
-        'settings': 'Settings'
-    },
-    'es': {
-        'operational': '--- OPERACIONAL ---',
-        'dashboard': 'Dashboard',
-        'panels': 'Paneles',
-        'panel_builder': 'Constructor de Paneles',
-        'clinical': 'Clínica',
-        'economic': 'Económico',
-        'reagents': 'Reactivos',
-        'technical': '--- TÉCNICO ---',
-        'database': 'Base de Datos',
-        'advanced_inventory': 'Inventario Avanzado',
-        'settings': 'Configuración'
-    }
-}
-
-labels = nav_labels[lang]
+# Get translated labels
+labels = NAV[lang]
+dashboard_labels = DASHBOARD[lang]
+clinical_labels = CLINICAL[lang]
+panels_labels = PANELS[lang]
+settings_labels = SETTINGS[lang]
+common_labels = COMMON[lang]
 
 # -----------------------------
 # Sidebar navegación
@@ -100,7 +78,7 @@ page = st.sidebar.radio(
     ]
 )
 
-st.title("Inventario de Citometría")
+st.title(dashboard_labels['title'])
 
 # -----------------------------
 # Handle section separators (they can't be clicked)
@@ -182,12 +160,12 @@ if page == labels['advanced_inventory']:
 # -----------------------------
 # DASHBOARD
 # -----------------------------
-if page == "Dashboard":
+if page == labels['dashboard']:
 
-    # 🔍 Búsqueda rápida
+    # Quick search
     query = st.text_input(
-        "Buscar en inventario...",
-        placeholder="cd3, b220, pb, biolegend..."
+        dashboard_labels['search_placeholder'].split('...')[0] + '...',
+        placeholder=dashboard_labels['search_placeholder'].split('...')[1] if '...' in dashboard_labels['search_placeholder'] else ''
     )
 
     # 🎛 Filtros
@@ -214,19 +192,20 @@ if page == "Dashboard":
     # -----------------------------
     col1, col2, col3, col4 = st.columns(4)
 
-    # Antibody metrics
+    # Antibody metrics with corrected terminology
     df_ab_all = inv[inv["item_type"] == "antibody"]
     n_ab_total = len(df_ab_all)
-    n_ab_open = (df_ab_all["status"].str.lower().isin(["stored", "in use"])).sum()
-    n_ab_closed = (df_ab_all["status"].str.lower() == "closed").sum()
+    n_ab_in_use = (df_ab_all["status"].str.lower() == "in use").sum()  # Currently being used
+    n_ab_stored = (df_ab_all["status"].str.lower() == "stored").sum()  # Not in active use
+    n_ab_closed = (df_ab_all["status"].str.lower() == "closed").sum()  # Finished/empty
 
     # General reagent metrics
     n_gen = (inv["item_type"] == "general_reagent").sum()
 
-    col1.metric("Total Antibodies", n_ab_total)
-    col2.metric("Open Vials", n_ab_open, help="Antibody vials available (Stored + In Use)")
-    col3.metric("Closed Vials", n_ab_closed)
-    col4.metric("General Reagents", n_gen)
+    col1.metric(dashboard_labels['total_antibodies'], n_ab_total)
+    col2.metric(dashboard_labels['in_use'], n_ab_in_use, help=dashboard_labels['in_use_help'])
+    col3.metric(dashboard_labels['stored'], n_ab_stored, help=dashboard_labels['stored_help'])
+    col4.metric(dashboard_labels['closed'], n_ab_closed, help=dashboard_labels['closed_help'])
 
     st.markdown("---")
 
