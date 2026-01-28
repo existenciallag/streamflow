@@ -451,7 +451,13 @@ def calculate_draft_panel_cost(reagent_list: List[Dict], strategy: CostStrategy 
             })
             continue
 
-        # Get available units for this reagent (same logic as calculate_panel_cost_current)
+        # Get reagent catalog price for fallback
+        reagent_info = query_panels("""
+            SELECT price FROM reagents WHERE id = ?
+        """, (reagent_id,))
+        reagent_catalog_price = reagent_info.iloc[0]['price'] if not reagent_info.empty else None
+
+        # Get available units for this reagent with smart cost calculation
         available_units = query_panels("""
             SELECT
                 ru.id,
@@ -462,15 +468,30 @@ def calculate_draft_panel_cost(reagent_list: List[Dict], strategy: CostStrategy 
                 ru.cost_per_ul,
                 ru.arrival_date,
                 ru.expiration_date,
-                ru.status
+                ru.status,
+                -- Calculate cost_per_ul with fallback logic
+                CASE
+                    WHEN ru.cost_per_ul IS NOT NULL AND ru.cost_per_ul > 0 THEN ru.cost_per_ul
+                    WHEN ru.purchase_price IS NOT NULL AND ru.purchase_price > 0 AND ru.initial_volume > 0
+                        THEN ru.purchase_price / ru.initial_volume
+                    WHEN ? IS NOT NULL AND ? > 0 AND ru.initial_volume > 0
+                        THEN ? / ru.initial_volume
+                    ELSE NULL
+                END as calculated_cost_per_ul
             FROM reagent_units ru
             WHERE ru.reagent_id = ?
               AND LOWER(ru.status) IN ('stored', 'in use')
               AND COALESCE(ru.current_volume, ru.initial_volume) >= ?
               AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
-              AND ru.cost_per_ul IS NOT NULL
-              AND ru.cost_per_ul > 0
-        """, (reagent_id, volume_needed))
+              AND ru.initial_volume > 0
+        """, (reagent_catalog_price, reagent_catalog_price, reagent_catalog_price, reagent_id, volume_needed))
+
+        # Filter out units where we couldn't calculate cost
+        if not available_units.empty:
+            available_units = available_units[available_units['calculated_cost_per_ul'].notna()]
+            available_units = available_units[available_units['calculated_cost_per_ul'] > 0]
+            # Use calculated cost as the primary cost_per_ul
+            available_units['cost_per_ul'] = available_units['calculated_cost_per_ul']
 
         if available_units.empty:
             all_available = False
