@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime
 from ui.crud_panels import query_panels
 from utils.pricing import calculate_panel_cost_current
+from utils.translations import PANELS, COMMON
 
 
 def delete_panel(panel_id):
@@ -119,7 +120,12 @@ def remove_reagent_from_panel(panel_reagent_id):
 def show_panels(panels_df=None):
     """Main panels viewer with CRUD operations"""
 
-    st.subheader("Panels")
+    # Get language from session state
+    lang = st.session_state.get('language', 'en')
+    labels = PANELS[lang]
+    common = COMMON[lang]
+
+    st.subheader(labels['title'])
 
     # Initialize session state
     if "panel_mode" not in st.session_state:
