@@ -154,7 +154,7 @@ def show_panels(panels_df=None):
     """)
 
     if panels is None or panels.empty:
-        st.info("No panels found. Create one in Panel Builder.")
+        st.info(labels['no_panels'])
         return
 
     # Two-column layout
@@ -164,7 +164,7 @@ def show_panels(panels_df=None):
     # LEFT PANEL: PANEL LIST
     # =============================================================
     with col_list:
-        search = st.text_input("Search panels", key="panel_search")
+        search = st.text_input(labels['search'], key="panel_search")
 
         df = panels.copy()
         if search:
@@ -196,7 +196,7 @@ def show_panels(panels_df=None):
             st.session_state["panel_selected_id"] = panel_id
 
         if not panel_id:
-            st.info("👈 Select a panel to view details")
+            st.info(labels['select_panel'])
             return
 
         # Load full panel data - validate panel still exists
@@ -229,23 +229,23 @@ def show_panels(panels_df=None):
                 st.caption(f"{status_color} {panel.get('status', 'draft').upper()} · v{panel.get('version', '1.0.0')}")
 
             with col_h2:
-                if st.button("✏️ Edit", use_container_width=True):
+                if st.button(labels['edit'], use_container_width=True):
                     st.session_state["panel_mode"] = "edit"
                     st.rerun()
 
             with col_h3:
-                if st.button("Modify", use_container_width=True, help="Modify panel contents"):
+                if st.button(labels['modify'], use_container_width=True, help="Modify panel contents"):
                     st.session_state["panel_mode"] = "modify"
                     st.rerun()
 
             with col_h4:
-                if st.button("Delete", use_container_width=True, type="secondary"):
+                if st.button(common['delete'], use_container_width=True, type="secondary"):
                     st.session_state["panel_mode"] = "delete_confirm"
                     st.rerun()
 
             # Metadata display
             st.markdown("---")
-            st.markdown("### Panel Information")
+            st.markdown(f"### {labels['panel_info']}")
 
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -330,7 +330,7 @@ def show_panels(panels_df=None):
 
             # Reagents table with SEMANTIC NAMES ONLY
             st.markdown("---")
-            st.markdown("### Panel Composition")
+            st.markdown(f"### {labels['panel_composition']}")
 
             panel_reagents = query_panels("""
                 SELECT
@@ -354,7 +354,7 @@ def show_panels(panels_df=None):
             """, (panel_id,))
 
             if panel_reagents.empty:
-                st.info("This panel has no reagents assigned.")
+                st.info(labels['no_reagents'])
             else:
                 # Calculate cost to get per-reagent breakdown
                 cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
@@ -478,7 +478,7 @@ def show_panels(panels_df=None):
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    new_name = st.text_input("Panel Name *", value=full_panel['name'])
+                    new_name = st.text_input(f"{labels['name']} *", value=full_panel['name'])
                     new_clinical_indication = st.text_input(
                         "Clinical Indication",
                         value=full_panel.get('clinical_indication') or ""
@@ -508,7 +508,7 @@ def show_panels(panels_df=None):
                 )
 
                 st.markdown("**Protocols** (read-only)")
-                st.info("Protocols can only be edited in Panel Builder to maintain single source of truth")
+                st.info(labels['protocols_edit_note'])
 
                 p1, p2, p3 = st.columns(3)
 
@@ -580,9 +580,9 @@ def show_panels(panels_df=None):
 
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
-                    save_clicked = st.form_submit_button("Save Changes", type="primary", use_container_width=True)
+                    save_clicked = st.form_submit_button(labels['save_changes'], type="primary", use_container_width=True)
                 with col_btn2:
-                    cancel_clicked = st.form_submit_button("Cancel", use_container_width=True)
+                    cancel_clicked = st.form_submit_button(common['cancel'], use_container_width=True)
 
             if save_clicked:
                 # Handle version update
@@ -688,7 +688,7 @@ def show_panels(panels_df=None):
             """, (panel_id,))
 
             if not panel_reagents.empty:
-                st.markdown("### Current Reagents")
+                st.markdown(f"### {labels['current_reagents']}")
 
                 # Make dataframe selectable
                 selected_reagents = st.dataframe(
@@ -705,7 +705,7 @@ def show_panels(panels_df=None):
 
                 # Remove button
                 if selected_reagents and selected_reagents.get("selection", {}).get("rows"):
-                    if st.button("Remove Selected Reagents", type="secondary"):
+                    if st.button(labels['remove_selected'], type="secondary"):
                         for idx in selected_reagents["selection"]["rows"]:
                             reagent_id = panel_reagents.iloc[idx]["panel_reagent_id"]
                             success, msg = remove_reagent_from_panel(reagent_id)
@@ -772,6 +772,6 @@ def show_panels(panels_df=None):
                         st.error(message)
 
             with col2:
-                if st.button("Cancel", use_container_width=True):
+                if st.button(common['cancel'], use_container_width=True):
                     st.session_state["panel_mode"] = "view"
                     st.rerun()
