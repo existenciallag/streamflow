@@ -371,11 +371,11 @@ def show_panels(panels_df=None):
                     lambda x: cost_lookup.get(x, 0.0)
                 )
                 display_reagents["cost_display"] = display_reagents["cost"].apply(
-                    lambda x: f"${x:.2f}" if x > 0 else "N/A"
+                    lambda x: f"${x:.2f}" if x is not None and x > 0 else "N/A"
                 )
 
                 display_reagents["is_intracellular"] = display_reagents["is_intracellular"].apply(
-                    lambda x: "✓" if x else ""
+                    lambda x: "Yes" if x else ""
                 )
 
                 display_reagents = display_reagents.rename(columns={
