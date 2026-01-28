@@ -150,7 +150,6 @@ def calculate_panel_cost_current(
             WHERE ru.reagent_id = ?
               AND LOWER(ru.status) IN ('stored', 'in use')
               AND COALESCE(ru.current_volume, ru.initial_volume) >= ?
-              AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
               AND ru.initial_volume > 0
         """, (reagent_catalog_price, reagent_catalog_price, reagent_catalog_price, reagent_id, volume_needed))
 
@@ -482,7 +481,6 @@ def calculate_draft_panel_cost(reagent_list: List[Dict], strategy: CostStrategy 
             WHERE ru.reagent_id = ?
               AND LOWER(ru.status) IN ('stored', 'in use')
               AND COALESCE(ru.current_volume, ru.initial_volume) >= ?
-              AND (ru.expiration_date IS NULL OR ru.expiration_date > datetime('now'))
               AND ru.initial_volume > 0
         """, (reagent_catalog_price, reagent_catalog_price, reagent_catalog_price, reagent_id, volume_needed))
 
