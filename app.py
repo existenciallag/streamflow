@@ -81,11 +81,16 @@ page = st.sidebar.radio(
 st.title(dashboard_labels['title'])
 
 # -----------------------------
-# Handle section separators (they can't be clicked)
+# Handle section separators (redirect to first page in section)
 # -----------------------------
-if page in [labels['operational'], labels['technical']]:
-    st.warning("Please select a specific page from the menu")
-    st.stop()
+if page == labels['operational']:
+    # Auto-redirect to Dashboard (first operational page)
+    page = labels['dashboard']
+    st.info("📍 Redirected to Dashboard. Use the menu to navigate to other operational pages.")
+elif page == labels['technical']:
+    # Auto-redirect to Database (first technical page)
+    page = labels['database']
+    st.info("📍 Redirected to Database. Use the menu to navigate to other technical pages.")
 
 # -----------------------------
 # Settings

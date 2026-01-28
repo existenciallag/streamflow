@@ -492,6 +492,15 @@ def show_panels(panels_df=None):
                 )
 
                 st.markdown("**Protocols**")
+
+                # Check if any protocols are validated
+                acq_validated = full_panel.get('acquisition_protocol_status') == 'validated'
+                comp_validated = full_panel.get('compensation_status') == 'validated'
+                analysis_validated = full_panel.get('analysis_protocol_status') == 'validated'
+
+                if acq_validated or comp_validated or analysis_validated:
+                    st.info("ℹ️ Validated protocols are read-only. Change status to 'draft' to edit protocol names.")
+
                 p1, p2, p3 = st.columns(3)
 
                 with p1:
@@ -499,7 +508,8 @@ def show_panels(panels_df=None):
                     new_acq_name = st.text_input(
                         "Name",
                         value=full_panel.get('acquisition_protocol_name') or "",
-                        key="edit_acq_name"
+                        key="edit_acq_name",
+                        disabled=acq_validated
                     )
                     new_acq_status = st.selectbox(
                         "Status",
@@ -514,7 +524,8 @@ def show_panels(panels_df=None):
                     new_comp_name = st.text_input(
                         "Name",
                         value=full_panel.get('compensation_name') or "",
-                        key="edit_comp_name"
+                        key="edit_comp_name",
+                        disabled=comp_validated
                     )
                     new_comp_status = st.selectbox(
                         "Status",
@@ -529,7 +540,8 @@ def show_panels(panels_df=None):
                     new_analysis_name = st.text_input(
                         "Name",
                         value=full_panel.get('analysis_protocol_name') or "",
-                        key="edit_analysis_name"
+                        key="edit_analysis_name",
+                        disabled=analysis_validated
                     )
                     new_analysis_status = st.selectbox(
                         "Status",
@@ -629,7 +641,7 @@ def show_panels(panels_df=None):
                             new_version,
                             current_version,
                             new_status,
-                            version_notes if 'version_notes' in st.session_state else "",
+                            st.session_state.get('version_notes', ''),
                             datetime.utcnow().isoformat()
                         ), commit=True)
 
@@ -650,7 +662,7 @@ def show_panels(panels_df=None):
                         panel_id,
                         current_status,
                         new_status,
-                        status_reason if 'status_reason' in st.session_state else "",
+                        st.session_state.get('status_reason', ''),
                         datetime.utcnow().isoformat()
                     ), commit=True)
 
