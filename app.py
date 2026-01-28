@@ -61,36 +61,36 @@ common_labels = COMMON[lang]
 # -----------------------------
 # Sidebar navegación
 # -----------------------------
+st.sidebar.markdown("### " + ("Navigation" if lang == 'en' else "Navegación"))
+
+# Operational section
+st.sidebar.markdown("**OPERATIONAL**" if lang == 'en' else "**OPERACIONAL**")
+operational_pages = [
+    labels['dashboard'],
+    labels['panels'],
+    labels['panel_builder'],
+    labels['clinical'],
+    labels['economic'],
+    labels['reagents']
+]
+
+# Technical section
+st.sidebar.markdown("---")
+st.sidebar.markdown("**TECHNICAL**" if lang == 'en' else "**TÉCNICO**")
+technical_pages = [
+    labels['database'],
+    labels['advanced_inventory'],
+    labels['settings']
+]
+
+# Single radio for all pages
 page = st.sidebar.radio(
-    "Navigation" if lang == 'en' else "Navegación",
-    [
-        labels['operational'],
-        labels['dashboard'],
-        labels['panels'],
-        labels['panel_builder'],
-        labels['clinical'],
-        labels['economic'],
-        labels['reagents'],
-        labels['technical'],
-        labels['database'],
-        labels['advanced_inventory'],
-        labels['settings']
-    ]
+    "Select page" if lang == 'en' else "Seleccionar página",
+    operational_pages + technical_pages,
+    label_visibility="collapsed"
 )
 
 st.title(dashboard_labels['title'])
-
-# -----------------------------
-# Handle section separators (redirect to first page in section)
-# -----------------------------
-if page == labels['operational']:
-    # Auto-redirect to Dashboard (first operational page)
-    page = labels['dashboard']
-    st.info("📍 Redirected to Dashboard. Use the menu to navigate to other operational pages.")
-elif page == labels['technical']:
-    # Auto-redirect to Database (first technical page)
-    page = labels['database']
-    st.info("📍 Redirected to Database. Use the menu to navigate to other technical pages.")
 
 # -----------------------------
 # Settings

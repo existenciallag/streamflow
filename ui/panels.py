@@ -83,10 +83,8 @@ def delete_panel(panel_id):
 
 
 def update_panel_metadata(panel_id, name, description, sample_type, sample_volume, washed_sample,
-                          clinical_indication, acquisition_protocol_name, acquisition_protocol_status,
-                          compensation_protocol_name, compensation_protocol_status,
-                          analysis_protocol_name, analysis_protocol_status):
-    """Update panel metadata"""
+                          clinical_indication):
+    """Update panel metadata (protocols can only be edited in Panel Builder)"""
     try:
         query_panels("""
             UPDATE panels SET
@@ -96,19 +94,11 @@ def update_panel_metadata(panel_id, name, description, sample_type, sample_volum
                 sample_volume = ?,
                 washed_sample = ?,
                 clinical_indication = ?,
-                acquisition_protocol_name = ?,
-                acquisition_protocol_status = ?,
-                compensation_name = ?,
-                compensation_status = ?,
-                analysis_protocol_name = ?,
-                analysis_protocol_status = ?,
                 updated_at = ?
             WHERE id = ?
         """, (
             name, description, sample_type, sample_volume, washed_sample,
-            clinical_indication, acquisition_protocol_name, acquisition_protocol_status,
-            compensation_protocol_name, compensation_protocol_status,
-            analysis_protocol_name, analysis_protocol_status,
+            clinical_indication,
             datetime.utcnow().isoformat(), panel_id
         ), commit=True)
 
@@ -129,7 +119,7 @@ def remove_reagent_from_panel(panel_reagent_id):
 def show_panels(panels_df=None):
     """Main panels viewer with CRUD operations"""
 
-    st.subheader("🔬 Panels")
+    st.subheader("Panels")
 
     # Initialize session state
     if "panel_mode" not in st.session_state:
@@ -168,7 +158,7 @@ def show_panels(panels_df=None):
     # LEFT PANEL: PANEL LIST
     # =============================================================
     with col_list:
-        search = st.text_input("🔍 Search panels", key="panel_search")
+        search = st.text_input("Search panels", key="panel_search")
 
         df = panels.copy()
         if search:
@@ -238,18 +228,18 @@ def show_panels(panels_df=None):
                     st.rerun()
 
             with col_h3:
-                if st.button("🔧 Modify", use_container_width=True, help="Modify panel contents"):
+                if st.button("Modify", use_container_width=True, help="Modify panel contents"):
                     st.session_state["panel_mode"] = "modify"
                     st.rerun()
 
             with col_h4:
-                if st.button("🗑️ Delete", use_container_width=True, type="secondary"):
+                if st.button("Delete", use_container_width=True, type="secondary"):
                     st.session_state["panel_mode"] = "delete_confirm"
                     st.rerun()
 
             # Metadata display
             st.markdown("---")
-            st.markdown("### 📋 Panel Information")
+            st.markdown("### Panel Information")
 
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -334,7 +324,7 @@ def show_panels(panels_df=None):
 
             # Reagents table with SEMANTIC NAMES ONLY
             st.markdown("---")
-            st.markdown("### 🧬 Panel Composition")
+            st.markdown("### Panel Composition")
 
             panel_reagents = query_panels("""
                 SELECT
@@ -360,11 +350,29 @@ def show_panels(panels_df=None):
             if panel_reagents.empty:
                 st.info("This panel has no reagents assigned.")
             else:
+                # Calculate cost to get per-reagent breakdown
+                cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
+
+                # Create cost lookup from breakdown
+                cost_lookup = {}
+                if 'breakdown' in cost_result:
+                    for item in cost_result['breakdown']:
+                        reagent_name = item.get('reagent', '')
+                        cost_lookup[reagent_name] = item.get('cost', 0.0)
+
                 # Format for display
                 display_reagents = panel_reagents[[
-                    "channel", "display_name", "fluorochrome", "clone",
+                    "channel", "display_name", "antibody", "fluorochrome", "clone",
                     "brand", "volume_used", "staining_step", "is_intracellular"
                 ]].copy()
+
+                # Add cost per reagent
+                display_reagents["cost"] = display_reagents["antibody"].apply(
+                    lambda x: cost_lookup.get(x, 0.0)
+                )
+                display_reagents["cost_display"] = display_reagents["cost"].apply(
+                    lambda x: f"${x:.2f}" if x > 0 else "N/A"
+                )
 
                 display_reagents["is_intracellular"] = display_reagents["is_intracellular"].apply(
                     lambda x: "✓" if x else ""
@@ -378,20 +386,22 @@ def show_panels(panels_df=None):
                     "brand": "Brand",
                     "volume_used": "Vol (µL)",
                     "staining_step": "Step",
-                    "is_intracellular": "Intra"
+                    "is_intracellular": "Intra",
+                    "cost_display": "Cost"
                 })
+
+                # Drop temporary columns
+                display_reagents = display_reagents.drop(columns=["antibody", "cost"])
 
                 st.dataframe(display_reagents, use_container_width=True, hide_index=True)
 
-                # Calculate cost dynamically from current stock
-                cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
-
+                # Display total cost summary
                 # Handle error cases
                 if 'error' in cost_result:
-                    st.warning(f"⚠️ Could not calculate cost: {cost_result.get('error', 'Unknown error')}")
+                    st.warning(f"Could not calculate cost: {cost_result.get('error', 'Unknown error')}")
                 else:
-                    cost_status = "✅" if cost_result.get('is_complete', True) else "⚠️"
-                    st.markdown(f"### 💰 {cost_status} Estimated Cost: **${cost_result.get('total_cost', 0.0):.2f}** per test")
+                    cost_status = "[Complete]" if cost_result.get('is_complete', True) else "[Incomplete]"
+                    st.markdown(f"### {cost_status} Estimated Cost: **${cost_result.get('total_cost', 0.0):.2f}** per test")
                     st.caption("Calculated from current cheapest stock. Cost updates when reagent prices change.")
 
             # Version and Status History
@@ -409,7 +419,7 @@ def show_panels(panels_df=None):
                 """, (panel_id,))
 
                 if version_history is not None and not version_history.empty:
-                    with st.expander(f"📜 Version History ({len(version_history)} versions)", expanded=False):
+                    with st.expander(f"Version History ({len(version_history)} versions)", expanded=False):
                         for _, ver in version_history.iterrows():
                             st.caption(f"**v{ver['version']}** • {ver['created_at'][:10]}")
                             if ver['previous_version']:
@@ -431,7 +441,7 @@ def show_panels(panels_df=None):
                 """, (panel_id,))
 
                 if status_history is not None and not status_history.empty:
-                    with st.expander(f"🔄 Status History ({len(status_history)} changes)", expanded=False):
+                    with st.expander(f"Status History ({len(status_history)} changes)", expanded=False):
                         for _, status in status_history.iterrows():
                             from_st = status['from_status'] or 'None'
                             st.caption(f"**{from_st} → {status['to_status']}** • {status['changed_at'][:10]}")
@@ -491,65 +501,25 @@ def show_panels(panels_df=None):
                     height=80
                 )
 
-                st.markdown("**Protocols**")
-
-                # Check if any protocols are validated
-                acq_validated = full_panel.get('acquisition_protocol_status') == 'validated'
-                comp_validated = full_panel.get('compensation_status') == 'validated'
-                analysis_validated = full_panel.get('analysis_protocol_status') == 'validated'
-
-                if acq_validated or comp_validated or analysis_validated:
-                    st.info("ℹ️ Validated protocols are read-only. Change status to 'draft' to edit protocol names.")
+                st.markdown("**Protocols** (read-only)")
+                st.info("Protocols can only be edited in Panel Builder to maintain single source of truth")
 
                 p1, p2, p3 = st.columns(3)
 
                 with p1:
                     st.caption("Acquisition")
-                    new_acq_name = st.text_input(
-                        "Name",
-                        value=full_panel.get('acquisition_protocol_name') or "",
-                        key="edit_acq_name",
-                        disabled=acq_validated
-                    )
-                    new_acq_status = st.selectbox(
-                        "Status",
-                        ["draft", "validated", "archived"],
-                        index=["draft", "validated", "archived"].index(full_panel.get('acquisition_protocol_status', 'draft'))
-                        if full_panel.get('acquisition_protocol_status') in ["draft", "validated", "archived"] else 0,
-                        key="edit_acq_status"
-                    )
+                    st.text(f"{full_panel.get('acquisition_protocol_name') or '—'}")
+                    st.caption(f"Status: {full_panel.get('acquisition_protocol_status', 'draft')}")
 
                 with p2:
                     st.caption("Compensation")
-                    new_comp_name = st.text_input(
-                        "Name",
-                        value=full_panel.get('compensation_name') or "",
-                        key="edit_comp_name",
-                        disabled=comp_validated
-                    )
-                    new_comp_status = st.selectbox(
-                        "Status",
-                        ["draft", "validated", "archived"],
-                        index=["draft", "validated", "archived"].index(full_panel.get('compensation_status', 'draft'))
-                        if full_panel.get('compensation_status') in ["draft", "validated", "archived"] else 0,
-                        key="edit_comp_status"
-                    )
+                    st.text(f"{full_panel.get('compensation_name') or '—'}")
+                    st.caption(f"Status: {full_panel.get('compensation_status', 'draft')}")
 
                 with p3:
                     st.caption("Analysis")
-                    new_analysis_name = st.text_input(
-                        "Name",
-                        value=full_panel.get('analysis_protocol_name') or "",
-                        key="edit_analysis_name",
-                        disabled=analysis_validated
-                    )
-                    new_analysis_status = st.selectbox(
-                        "Status",
-                        ["draft", "validated", "archived"],
-                        index=["draft", "validated", "archived"].index(full_panel.get('analysis_protocol_status', 'draft'))
-                        if full_panel.get('analysis_protocol_status') in ["draft", "validated", "archived"] else 0,
-                        key="edit_analysis_status"
-                    )
+                    st.text(f"{full_panel.get('analysis_protocol_name') or '—'}")
+                    st.caption(f"Status: {full_panel.get('analysis_protocol_status', 'draft')}")
 
                 # Version and Status Management
                 st.markdown("---")
@@ -564,6 +534,7 @@ def show_panels(panels_df=None):
                         ["Keep current", "Patch (0.0.X) - Bug fixes", "Minor (0.X.0) - New features", "Major (X.0.0) - Breaking changes"],
                         key="version_action"
                     )
+                    version_notes = None
                     if version_action != "Keep current":
                         version_notes = st.text_area(
                             "Version Notes",
@@ -593,6 +564,7 @@ def show_panels(panels_df=None):
                         key="new_status"
                     )
 
+                    status_reason = None
                     if new_status != current_status:
                         status_reason = st.text_input(
                             "Reason for status change",
@@ -602,9 +574,9 @@ def show_panels(panels_df=None):
 
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
-                    save_clicked = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+                    save_clicked = st.form_submit_button("Save Changes", type="primary", use_container_width=True)
                 with col_btn2:
-                    cancel_clicked = st.form_submit_button("❌ Cancel", use_container_width=True)
+                    cancel_clicked = st.form_submit_button("Cancel", use_container_width=True)
 
             if save_clicked:
                 # Handle version update
@@ -641,7 +613,7 @@ def show_panels(panels_df=None):
                             new_version,
                             current_version,
                             new_status,
-                            st.session_state.get('version_notes', ''),
+                            version_notes or '',
                             datetime.utcnow().isoformat()
                         ), commit=True)
 
@@ -662,7 +634,7 @@ def show_panels(panels_df=None):
                         panel_id,
                         current_status,
                         new_status,
-                        st.session_state.get('status_reason', ''),
+                        status_reason or '',
                         datetime.utcnow().isoformat()
                     ), commit=True)
 
@@ -670,13 +642,10 @@ def show_panels(panels_df=None):
                     query_panels("UPDATE panels SET status = ?, updated_at = ? WHERE id = ?",
                                (new_status, datetime.utcnow().isoformat(), panel_id), commit=True)
 
-                # Update metadata
+                # Update metadata (protocols are not editable here)
                 success, message = update_panel_metadata(
                     panel_id, new_name, new_description, new_sample_type, new_sample_volume,
-                    1 if new_washed_sample else 0, new_clinical_indication,
-                    new_acq_name, new_acq_status,
-                    new_comp_name, new_comp_status,
-                    new_analysis_name, new_analysis_status
+                    1 if new_washed_sample else 0, new_clinical_indication
                 )
 
                 if success:
@@ -730,7 +699,7 @@ def show_panels(panels_df=None):
 
                 # Remove button
                 if selected_reagents and selected_reagents.get("selection", {}).get("rows"):
-                    if st.button("🗑️ Remove Selected Reagents", type="secondary"):
+                    if st.button("Remove Selected Reagents", type="secondary"):
                         for idx in selected_reagents["selection"]["rows"]:
                             reagent_id = panel_reagents.iloc[idx]["panel_reagent_id"]
                             success, msg = remove_reagent_from_panel(reagent_id)
@@ -786,7 +755,7 @@ def show_panels(panels_df=None):
             col1, col2 = st.columns(2)
 
             with col1:
-                if st.button("🗑️ Yes, Delete Panel", type="primary", use_container_width=True):
+                if st.button("Yes, Delete Panel", type="primary", use_container_width=True):
                     success, message = delete_panel(panel_id)
                     if success:
                         st.success(message)
@@ -797,6 +766,6 @@ def show_panels(panels_df=None):
                         st.error(message)
 
             with col2:
-                if st.button("❌ Cancel", use_container_width=True):
+                if st.button("Cancel", use_container_width=True):
                     st.session_state["panel_mode"] = "view"
                     st.rerun()
