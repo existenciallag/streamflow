@@ -1,23 +1,28 @@
 # ui/inventory_advanced.py
 import streamlit as st
 import pandas as pd
+from utils.translations import get_lang_dict
 
 def advanced_inventory_view(df):
-    st.subheader("📊 Inventario Avanzado")
+    # Get language from session state
+    lang = st.session_state.get('language', 'en')
+    t = get_lang_dict('inventory', lang)
 
-    cols = st.multiselect("Mostrar columnas", df.columns, default=df.columns)
+    st.subheader(f"📊 {t['subheader']}")
 
-    group_by = st.selectbox("Agrupar por...", ["Ninguno"] + list(df.columns))
+    cols = st.multiselect(t['show_columns_label'], df.columns, default=df.columns)
 
-    if group_by != "Ninguno":
+    group_by = st.selectbox(t['group_by_label'], [t['group_by_none']] + list(df.columns))
+
+    if group_by != t['group_by_none']:
         grouped = df.groupby(group_by).size().reset_index(name="count")
         st.dataframe(grouped, use_container_width=True)
     else:
         st.dataframe(df[cols], use_container_width=True)
 
-    if st.button("Exportar a CSV"):
+    if st.button(t['export_button']):
         st.download_button(
-            "Descargar CSV",
+            t['download_button_label'],
             df.to_csv(index=False),
-            file_name="inventario.csv"
+            file_name=t['filename']
         )

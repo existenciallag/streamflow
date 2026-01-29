@@ -11,6 +11,7 @@ import pandas as pd
 import json
 from ui.crud_panels import query_panels
 from utils.pricing import calculate_draft_panel_cost
+from utils.translations import get_lang_dict
 
 
 def get_default_cytometer():
@@ -177,65 +178,70 @@ def calculate_panel_cost(panel_reagents):
     return result['total_cost']
 
 
-def render_antibody_card(ab, cytometer_id, key_prefix):
+def render_antibody_card(ab, cytometer_id, key_prefix, t=None):
     """Render an antibody selection card with all details"""
+    # Get translations if not provided
+    if t is None:
+        lang = st.session_state.get('language', 'en')
+        t = get_lang_dict('panel_builder', lang)
+
     with st.expander(
-        f"**{ab['reagent_name']}** {ab['fluorochrome']} ({ab['clone'] or 'N/A'})",
+        f"**{ab['reagent_name']}** {ab['fluorochrome']} ({ab['clone'] or t['unavailable_label']})",
         expanded=False
     ):
         # Display antibody details
         col1, col2 = st.columns(2)
 
         with col1:
-            st.caption("**Target:**")
+            st.caption(f"**{t['target_label']}**")
             st.write(ab['target_antigen'] or ab['reagent_name'])
 
-            st.caption("**Fluorochrome:**")
+            st.caption(f"**{t['fluorochrome_label']}**")
             st.write(ab['fluorochrome'])
 
-            st.caption("**Clone:**")
-            st.write(ab['clone'] or "N/A")
+            st.caption(f"**{t['clone_label']}**")
+            st.write(ab['clone'] or t['unavailable_label'])
 
         with col2:
-            st.caption("**Brand:**")
-            st.write(ab['brand'] or "N/A")
+            st.caption(f"**{t['brand_label']}**")
+            st.write(ab['brand'] or t['unavailable_label'])
 
-            st.caption("**Price:**")
+            st.caption(f"**{t['price_label']}**")
             if ab['price'] and ab['avg_initial_volume']:
                 # Calculate correct price per µL
                 unit_cost = ab['price'] / ab['avg_initial_volume']
                 st.write(f"${ab['price']:.2f} / {ab['avg_initial_volume']:.0f} µL")
-                st.caption(f"(${unit_cost:.3f} per µL)")
+                st.caption(t['price_per_ul'].format(cost=unit_cost))
             elif ab['price']:
                 st.write(f"${ab['price']:.2f}")
             else:
-                st.write("N/A")
+                st.write(t['unavailable_label'])
 
             # Stock status with detailed breakdown
-            st.caption("**Stock Status:**")
+            st.caption(f"**{t['stock_status_label']}**")
             stock_parts = []
 
             if ab['available_vials'] > 0:
-                stock_parts.append(f"✓ {ab['available_vials']} available")
+                stock_parts.append(f"✓ {t['available_stock'].format(count=ab['available_vials'])}")
 
             if ab['in_use_vials'] > 0:
-                stock_parts.append(f"🔵 {ab['in_use_vials']} in use")
+                stock_parts.append(f"🔵 {t['in_use_stock'].format(count=ab['in_use_vials'])}")
 
             if ab['expired_vials'] > 0:
-                stock_parts.append(f"⚠️ {ab['expired_vials']} expired")
+                stock_parts.append(f"⚠️ {t['expired_stock'].format(count=ab['expired_vials'])}")
 
             if stock_parts:
                 for part in stock_parts:
                     st.write(part)
 
                 if ab['earliest_expiration']:
-                    st.caption(f"Next exp: {ab['earliest_expiration'][:10]}")
+                    st.caption(t['next_expiration'].format(date=ab['earliest_expiration'][:10]))
             else:
-                st.error("No stock available")
+                st.error(t['no_stock_error'])
 
         # Channel assignment
         st.markdown("---")
-        st.caption("**Channel Assignment:**")
+        st.caption(f"**{t['channel_assignment_label']}**")
 
         # Auto-suggest channel using fluorochrome ID
         suggested_channel_id, suggested_channel_name = get_suggested_channel(
@@ -243,21 +249,21 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
         )
 
         if suggested_channel_id:
-            st.info(f"✓ Suggested: **{suggested_channel_name}**")
+            st.info(f"✓ {t['suggested_channel']} **{suggested_channel_name}**")
             selected_channel_id = suggested_channel_id
             selected_channel_name = suggested_channel_name
         else:
-            st.warning("⚠ No automatic channel match found")
+            st.warning(f"⚠ {t['no_channel_match_warning']}")
             # Manual selection
             channels = get_available_channels(cytometer_id)
             if channels.empty:
-                st.error("No channels configured for this cytometer")
+                st.error(t['no_channels_error'])
                 return None
 
             channel_options = {row['channel_name']: row['channel_id']
                              for _, row in channels.iterrows()}
             selected_channel_name = st.selectbox(
-                "Select channel manually",
+                t['select_channel_manually'],
                 options=list(channel_options.keys()),
                 key=f"{key_prefix}_channel_{ab['reagent_id']}"
             )
@@ -269,7 +275,7 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
 
         with col1:
             volume = st.number_input(
-                "Volume (µL)",
+                t['volume_label'],
                 min_value=0.0,
                 max_value=50.0,
                 value=1.25,
@@ -279,30 +285,30 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
 
         with col2:
             is_intracellular = st.checkbox(
-                "Intracellular",
+                t['intracellular_label'],
                 value=False,
                 key=f"{key_prefix}_intra_{ab['reagent_id']}"
             )
 
         staining_step = st.number_input(
-            "Staining Step",
+            t['staining_step_label'],
             min_value=1,
             max_value=5,
             value=1 if not is_intracellular else 2,
-            help="Workflow order: 1=first, 2=second, etc.",
+            help=t['staining_step_help'],
             key=f"{key_prefix}_step_{ab['reagent_id']}"
         )
 
         # Display name customization
         default_display = f"{ab['target_antigen'] or ab['reagent_name']} {ab['fluorochrome']}"
         display_name = st.text_input(
-            "Display name in panel",
+            t['display_name_label'],
             value=default_display,
             key=f"{key_prefix}_display_{ab['reagent_id']}"
         )
 
         # Add button
-        if st.button("➕ Add to Panel", key=f"{key_prefix}_add_{ab['reagent_id']}", type="secondary"):
+        if st.button(f"➕ {t['add_to_panel_button']}", key=f"{key_prefix}_add_{ab['reagent_id']}", type="secondary"):
             return {
                 "reagent_id": ab['reagent_id'],
                 "reagent_name": ab['reagent_name'],
@@ -324,10 +330,14 @@ def render_antibody_card(ab, cytometer_id, key_prefix):
 
 def render_panel_composition(panel_reagents, panel_general_reagents):
     """Render the right-side panel composition view"""
-    st.markdown("### 📋 Panel Composition")
+    # Get translations
+    lang = st.session_state.get('language', 'en')
+    t = get_lang_dict('panel_builder', lang)
+
+    st.markdown(f"### 📋 {t['panel_composition_header']}")
 
     if not panel_reagents and not panel_general_reagents:
-        st.info("No reagents added yet. Add antibodies from the left panel.")
+        st.info(t['no_reagents_message'])
         return
 
     # Calculate total cost DYNAMICALLY from current stock
@@ -340,19 +350,19 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
     # Summary metrics
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Antibodies", len(panel_reagents))
+        st.metric(t['antibodies_metric'], len(panel_reagents))
     with col2:
-        st.metric("General Reagents", len(panel_general_reagents))
+        st.metric(t['general_reagents_metric'], len(panel_general_reagents))
     with col3:
         st.metric(
-            "Est. Cost/Test",
+            t['est_cost_metric'],
             f"${total_cost:.2f}",
-            help="Calculated dynamically from current cheapest stock. Updates when reagent prices change."
+            help=t['cost_help']
         )
 
     # Antibodies table
     if panel_reagents:
-        st.markdown("#### Antibodies")
+        st.markdown(f"#### {t['antibodies_table_header']}")
 
         # Sort by channel display order
         sorted_reagents = sorted(panel_reagents, key=lambda x: x.get('channel_display_name', ''))
@@ -381,7 +391,7 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
 
         # Delete button
         if selected and selected.get("selection", {}).get("rows"):
-            if st.button("🗑️ Remove Selected", type="secondary"):
+            if st.button(f"🗑️ {t['remove_selected_button']}", type="secondary"):
                 # Remove selected indices (in reverse to avoid index issues)
                 for idx in sorted(selected["selection"]["rows"], reverse=True):
                     actual_idx = df.iloc[idx]["idx"]
@@ -390,7 +400,7 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
 
     # General reagents
     if panel_general_reagents:
-        st.markdown("#### General Reagents")
+        st.markdown(f"#### {t['general_reagents_header']}")
         for gr in panel_general_reagents:
             st.text(f"• {gr['display_name']}: {gr.get('volume_per_test', 'N/A')} µL - ${gr.get('cost_per_test', 0):.2f}")
 
@@ -511,8 +521,12 @@ def save_panel_updates(panel_id, panel_reagents, sample_type=None, sample_volume
 def create_panel():
     """Main panel builder interface - split view"""
 
-    st.title("🧬 Panel Builder v2.0")
-    st.caption("Clinical-grade panel designer with full traceability")
+    # Get language from session state
+    lang = st.session_state.get('language', 'en')
+    t = get_lang_dict('panel_builder', lang)
+
+    st.title(f"🧬 {t['title']}")
+    st.caption(t['subtitle'])
 
     # ============================================================
     # INITIALIZE SESSION STATE
@@ -532,60 +546,60 @@ def create_panel():
         panel_data = load_existing_panel_for_editing(st.session_state["editing_panel_id"])
         if panel_data:
             st.session_state["panel_draft_reagents"] = panel_data["reagents"]
-            st.info(f"✏️ Editing panel: {panel_data['panel']['name']}")
+            st.info(f"✏️ {t['editing_mode_info']} {panel_data['panel']['name']}")
 
     # ============================================================
     # PANEL METADATA
     # ============================================================
-    with st.expander("📝 Panel Metadata", expanded=True):
+    with st.expander(f"📝 {t['panel_metadata_header']}", expanded=True):
         col1, col2 = st.columns(2)
 
         with col1:
-            panel_name = st.text_input("Panel Name *", placeholder="e.g., LST Panel",
+            panel_name = st.text_input(t['panel_name_label'], placeholder=t['panel_name_placeholder'],
                                        disabled=editing_mode)
             if editing_mode:
-                st.caption("Panel name cannot be changed when editing")
+                st.caption(t['panel_name_locked'])
 
             clinical_indication = st.text_input(
-                "Clinical Indication",
-                placeholder="e.g., Lymphocyte subset analysis"
+                t['clinical_indication_label'],
+                placeholder=t['clinical_indication_placeholder']
             )
             sample_type = st.selectbox(
-                "Sample Type *",
-                ["Whole Blood", "Bone Marrow", "CSF", "Tissue", "Other"],
+                t['sample_type_label'],
+                [t['whole_blood'], t['bone_marrow'], t['csf'], t['tissue'], t['other']],
                 index=0
             )
 
         with col2:
-            panel_version = st.text_input("Version", value="1.0.0", disabled=True,
-                                        help="Auto-versioned on save")
+            panel_version = st.text_input(t['panel_version_label'], value="1.0.0", disabled=True,
+                                        help=t['version_help'])
             sample_volume = st.number_input(
-                "Sample Volume (µL) *",
+                t['sample_volume_label'],
                 min_value=0.0,
                 max_value=500.0,
                 value=50.0,
                 step=5.0
             )
-            washed_sample = st.checkbox("Pre-washed Sample", value=False)
+            washed_sample = st.checkbox(t['prewashed_sample_label'], value=False)
 
         description = st.text_area(
-            "Description",
+            t['description_label'],
             height=80,
-            placeholder="Brief description of the panel purpose and composition..."
+            placeholder=t['description_placeholder']
         )
 
     # ============================================================
     # PANEL CLASSIFICATION (Areas & Disease Categories)
     # ============================================================
     st.markdown("---")
-    st.markdown("### 📁 Classification")
+    st.markdown(f"### 📁 {t['classification_header']}")
 
     from utils.categories import get_all_areas, get_all_disease_categories
 
     # Get available areas and categories
     areas_df = get_all_areas()
     if areas_df is None or areas_df.empty:
-        st.warning("No clinical areas configured")
+        st.warning(t['no_clinical_areas_warning'])
         selected_area_id = None
         selected_disease_category_id = None
     else:
@@ -596,9 +610,9 @@ def create_panel():
             area_ids = [None] + list(areas_df["id"])
 
             selected_area_name = st.selectbox(
-                "Clinical Area *",
+                t['clinical_area_label'],
                 options=area_options,
-                help="Primary clinical area for this panel"
+                help=t['clinical_area_help']
             )
             selected_area_id = area_ids[area_options.index(selected_area_name)]
 
@@ -614,13 +628,13 @@ def create_panel():
                 category_ids = [None] + list(categories_df["id"])
 
                 selected_disease_category_name = st.selectbox(
-                    "Disease Category",
+                    t['disease_category_label'],
                     options=category_options,
-                    help="Specific disease category (if applicable)"
+                    help=t['disease_category_help']
                 )
                 selected_disease_category_id = category_ids[category_options.index(selected_disease_category_name)]
             else:
-                st.selectbox("Disease Category", options=["(No categories for this area)"], disabled=True)
+                st.selectbox(t['disease_category_label'], options=[t['no_categories_message']], disabled=True)
                 selected_disease_category_id = None
 
     # ============================================================
@@ -630,13 +644,13 @@ def create_panel():
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.markdown("### 🔬 Cytometer Configuration")
+        st.markdown(f"### 🔬 {t['cytometer_config_header']}")
 
     # Get default cytometer
     default_cyt_id, default_cyt_name = get_default_cytometer()
 
     if not default_cyt_id:
-        st.error("⚠️ No cytometer configured. Please add a cytometer first.")
+        st.error(f"⚠️ {t['no_cytometer_error']}")
         return
 
     # Get all cytometers
@@ -645,32 +659,32 @@ def create_panel():
 
     with col2:
         selected_cyt_name = st.selectbox(
-            "Select Cytometer",
+            t['select_cytometer_label'],
             options=list(cyt_map.keys()),
             index=list(cyt_map.keys()).index(default_cyt_name) if default_cyt_name in cyt_map else 0,
-            help="CytoFLEX is the default"
+            help=t['cytometer_help']
         )
         cytometer_id = cyt_map[selected_cyt_name]
 
-    st.info(f"✓ Using **{selected_cyt_name}** — All channels configured for this instrument")
+    st.info(f"✓ {t['cytometer_info']} **{selected_cyt_name}** — {t['all_channels_configured']}")
 
     # ============================================================
     # PROTOCOLS SELECTION (Simplified - use existing columns)
     # ============================================================
-    with st.expander("📋 Protocols", expanded=False):
+    with st.expander(f"📋 {t['protocols_header']}", expanded=False):
         col1, col2, col3 = st.columns(3)
 
         # Acquisition protocol (use name-based approach)
         with col1:
-            st.caption("**Acquisition Protocol**")
+            st.caption(f"**{t['acquisition_protocol_section']}**")
             acquisition_protocol_name = st.text_input(
-                "Protocol Name",
-                value="Standard Acquisition",
+                t['protocol_name_label'],
+                value=t['acquisition_protocol_default'],
                 key="acq_protocol_name",
-                help="Name of acquisition protocol"
+                help=t['acquisition_protocol_help']
             )
             acquisition_protocol_status = st.selectbox(
-                "Status",
+                t['protocol_status_label'],
                 ["draft", "validated", "archived"],
                 index=1,
                 key="acq_protocol_status"
@@ -678,15 +692,15 @@ def create_panel():
 
         # Compensation protocol
         with col2:
-            st.caption("**Compensation Protocol**")
+            st.caption(f"**{t['compensation_protocol_section']}**")
             compensation_protocol_name = st.text_input(
-                "Protocol Name",
-                value="Standard Compensation",
+                t['protocol_name_label'],
+                value=t['compensation_protocol_default'],
                 key="comp_protocol_name",
-                help="Name of compensation protocol"
+                help=t['compensation_protocol_help']
             )
             compensation_protocol_status = st.selectbox(
-                "Status",
+                t['protocol_status_label'],
                 ["draft", "validated", "archived"],
                 index=1,
                 key="comp_protocol_status"
@@ -694,15 +708,15 @@ def create_panel():
 
         # Analysis protocol
         with col3:
-            st.caption("**Analysis Protocol**")
+            st.caption(f"**{t['analysis_protocol_section']}**")
             analysis_protocol_name = st.text_input(
-                "Protocol Name",
-                value="Standard Gating",
+                t['protocol_name_label'],
+                value=t['analysis_protocol_default'],
                 key="analysis_protocol_name",
-                help="Name of analysis protocol"
+                help=t['analysis_protocol_help']
             )
             analysis_protocol_status = st.selectbox(
-                "Status",
+                t['protocol_status_label'],
                 ["draft", "validated", "archived"],
                 index=1,
                 key="analysis_protocol_status"
@@ -719,12 +733,12 @@ def create_panel():
     # LEFT PANEL: ANTIBODY SELECTION
     # ============================================================
     with left_col:
-        st.markdown("### 🔍 Antibody Selection")
+        st.markdown(f"### 🔍 {t['antibody_selection_header']}")
 
         # Search only (removed surface/intracellular filter)
         search_query = st.text_input(
-            "Search",
-            placeholder="Search by name, antigen, clone, or fluorochrome...",
+            t['search_label'],
+            placeholder=t['search_placeholder'],
             key="ab_search"
         )
 
@@ -732,7 +746,7 @@ def create_panel():
         reagents_df = get_reagents_with_details()
 
         if reagents_df.empty:
-            st.warning("No reagents found in database")
+            st.warning(t['no_reagents_warning'])
         else:
             # Apply search filter
             if search_query:
@@ -745,23 +759,23 @@ def create_panel():
                 reagents_df = reagents_df[mask]
 
             # Show count
-            st.caption(f"Showing {len(reagents_df)} antibodies")
+            st.caption(t['showing_count'].format(count=len(reagents_df)))
 
             # Render antibody cards (limit to 20 for performance)
             for _, ab in reagents_df.head(20).iterrows():
-                result = render_antibody_card(ab, cytometer_id, key_prefix="builder")
+                result = render_antibody_card(ab, cytometer_id, key_prefix="builder", t=t)
                 if result:
                     # Check for duplicate channel
                     existing_channels = [r['optical_channel_id'] for r in st.session_state["panel_draft_reagents"]]
                     if result['optical_channel_id'] in existing_channels:
-                        st.warning(f"⚠️ Channel {result['channel_display_name']} already in use!")
+                        st.warning(t['channel_in_use_warning'].format(name=result['channel_display_name']))
 
                     st.session_state["panel_draft_reagents"].append(result)
-                    st.success(f"✓ Added {result['display_name']}")
+                    st.success(f"✓ {t['added_success'].format(name=result['display_name'])}")
                     st.rerun()
 
             if len(reagents_df) > 20:
-                st.info(f"Showing first 20 of {len(reagents_df)} results. Use search to narrow down.")
+                st.info(t['showing_first_20'].format(count=len(reagents_df)))
 
     # ============================================================
     # RIGHT PANEL: PANEL COMPOSITION
@@ -780,25 +794,25 @@ def create_panel():
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
 
     with col1:
-        st.caption("Ready to save? All fields marked with * are required.")
+        st.caption(t['save_requirements'])
 
     with col2:
-        if editing_mode and st.button("❌ Cancel Edit", use_container_width=True):
+        if editing_mode and st.button(f"❌ {t['cancel_edit_button']}", use_container_width=True):
             st.session_state["editing_panel_id"] = None
             st.session_state["panel_draft_reagents"] = []
             st.session_state["panel_draft_general_reagents"] = []
-            st.success("Cancelled editing")
+            st.success(t['cancelled_editing'])
             st.rerun()
 
     with col3:
-        if st.button("🗑️ Clear Panel", type="secondary", use_container_width=True):
+        if st.button(f"🗑️ {t['clear_panel_button']}", type="secondary", use_container_width=True):
             st.session_state["panel_draft_reagents"] = []
             st.session_state["panel_draft_general_reagents"] = []
-            st.success("Panel cleared")
+            st.success(t['panel_cleared_message'])
             st.rerun()
 
     with col4:
-        save_button_label = "💾 Update Panel" if editing_mode else "💾 Save Panel"
+        save_button_label = f"💾 {t['update_button']}" if editing_mode else f"💾 {t['save_button']}"
         save_button = st.button(save_button_label, type="primary", use_container_width=True)
 
     if save_button:
@@ -806,13 +820,13 @@ def create_panel():
         errors = []
         if not editing_mode:
             if not panel_name or not panel_name.strip():
-                errors.append("Panel name is required")
+                errors.append(t['validation_panel_name_required'])
         if not sample_type:
-            errors.append("Sample type is required")
+            errors.append(t['validation_sample_type_required'])
         if sample_volume <= 0:
-            errors.append("Sample volume must be greater than 0")
+            errors.append(t['validation_sample_volume_required'])
         if not st.session_state["panel_draft_reagents"]:
-            errors.append("Add at least one antibody to the panel")
+            errors.append(t['validation_reagents_required'])
 
         if errors:
             for error in errors:
@@ -834,7 +848,7 @@ def create_panel():
                     description=description,
                     clinical_indication=clinical_indication
                 ):
-                    st.success(f"✅ Panel updated successfully!")
+                    st.success(f"✅ {t['panel_updated_success']}")
 
                     # Clear editing state
                     st.session_state["editing_panel_id"] = None
@@ -842,7 +856,7 @@ def create_panel():
                     st.session_state["panel_draft_general_reagents"] = []
                     st.balloons()
                 else:
-                    st.error("Failed to update panel")
+                    st.error(t['failed_update'])
 
             else:
                 # CREATE new panel
@@ -919,9 +933,9 @@ def create_panel():
                     from utils.categories import set_panel_classification
                     set_panel_classification(panel_id, selected_area_id, selected_disease_category_id, is_primary=True)
 
-                st.success(f"✅ Panel '{panel_name}' created successfully!")
-                st.info(f"Panel ID: {panel_id}")
-                st.info(f"Est. Cost: ${total_cost:.2f} per test (from current stock)")
+                st.success(f"✅ {t['panel_created_success'].format(name=panel_name)}")
+                st.info(f"{t['panel_id_info']} {panel_id}")
+                st.info(t['est_cost_info'].format(cost=f"{total_cost:.2f}"))
 
                 # Clear draft
                 st.session_state["panel_draft_reagents"] = []
@@ -931,6 +945,6 @@ def create_panel():
                 st.balloons()
 
         except Exception as e:
-            st.error(f"❌ Error saving panel: {e}")
+            st.error(f"❌ {t['save_error']} {e}")
             import traceback
             st.code(traceback.format_exc())

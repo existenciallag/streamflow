@@ -8,29 +8,38 @@ import pandas as pd
 import uuid
 from datetime import datetime, date, timedelta
 from ui.crud_panels import query_panels
+from utils.translations import get_lang_dict
 import plotly.express as px
 import plotly.graph_objects as go
 
 
 def run_economic():
     """Main economic tracking interface"""
-    st.title("💰 Economic & Panel Tracking")
+    # Get language from session state
+    lang = st.session_state.get('language', 'en')
+    t = get_lang_dict('economic', lang)
+
+    st.title(f"💰 {t['title']}")
 
     # Tabs
-    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "📝 Log Usage", "📈 Reports"])
+    tab1, tab2, tab3 = st.tabs([
+        f"📊 {t['dashboard_tab']}",
+        f"📝 {t['log_usage_tab']}",
+        f"📈 {t['reports_tab']}"
+    ])
 
     # =============================================================================
     # DASHBOARD
     # =============================================================================
     with tab1:
-        st.markdown("### Cost & Usage Overview")
+        st.markdown(f"### {t['cost_usage_overview']}")
 
         # Date range selector
         col_d1, col_d2 = st.columns(2)
         with col_d1:
-            start_date = st.date_input("From", value=date.today() - timedelta(days=30))
+            start_date = st.date_input(t['from_date_label'], value=date.today() - timedelta(days=30))
         with col_d2:
-            end_date = st.date_input("To", value=date.today())
+            end_date = st.date_input(t['to_date_label'], value=date.today())
 
         st.markdown("---")
 
@@ -48,16 +57,16 @@ def run_economic():
             m = metrics_query.iloc[0]
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Total Tests", int(m['total_tests']) if m['total_tests'] else 0)
+                st.metric(t['total_tests_metric'], int(m['total_tests']) if m['total_tests'] else 0)
             with col2:
-                st.metric("Total Cost", f"${m['total_cost']:.2f}" if m['total_cost'] else "$0.00")
+                st.metric(t['total_cost_metric'], f"${m['total_cost']:.2f}" if m['total_cost'] else "$0.00")
             with col3:
-                st.metric("Avg Cost/Test", f"${m['avg_cost_per_test']:.2f}" if m['avg_cost_per_test'] else "$0.00")
+                st.metric(t['avg_cost_metric'], f"${m['avg_cost_per_test']:.2f}" if m['avg_cost_per_test'] else "$0.00")
 
         st.markdown("---")
 
         # Panel usage frequency
-        st.markdown("### 📊 Panel Usage Frequency")
+        st.markdown(f"### 📊 {t['panel_usage_frequency']}")
         panel_usage = query_panels("""
             SELECT
                 p.name as panel_name,
@@ -82,8 +91,8 @@ def run_economic():
                 x='panel_name',
                 y='times_used',
                 color='area_name',
-                title='Top 10 Most Used Panels',
-                labels={'times_used': 'Times Used', 'panel_name': 'Panel'},
+                title=t['top_10_panels_title'],
+                labels={'times_used': t['times_used_label'], 'panel_name': t['panel_label']},
                 text='times_used'
             )
             fig.update_layout(xaxis_tickangle=-45)
@@ -92,22 +101,22 @@ def run_economic():
             # Table
             st.dataframe(
                 panel_usage[['panel_name', 'area_name', 'times_used', 'total_cost', 'avg_cost']].rename(columns={
-                    'panel_name': 'Panel',
-                    'area_name': 'Area',
-                    'times_used': 'Times Used',
-                    'total_cost': 'Total Cost',
-                    'avg_cost': 'Avg Cost/Test'
+                    'panel_name': t['panel_column'],
+                    'area_name': t['area_column'],
+                    'times_used': t['times_used_column'],
+                    'total_cost': t['total_cost_column'],
+                    'avg_cost': t['avg_cost_column']
                 }),
                 use_container_width=True,
                 hide_index=True
             )
         else:
-            st.info("No usage data for this period")
+            st.info(t['no_usage_data'])
 
         st.markdown("---")
 
         # Cost breakdown by area
-        st.markdown("### 💵 Cost Breakdown by Area")
+        st.markdown(f"### 💵 {t['cost_breakdown_header']}")
         area_costs = query_panels("""
             SELECT
                 COALESCE(pa.name, 'Unclassified') as area_name,
@@ -127,16 +136,16 @@ def run_economic():
                 area_costs,
                 values='total_cost',
                 names='area_name',
-                title='Cost Distribution by Clinical Area'
+                title=t['cost_distribution_title']
             )
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No cost data available")
+            st.info(t['no_cost_data'])
 
         st.markdown("---")
 
         # Top consumed reagents
-        st.markdown("### 🧪 Top Consumed Reagents")
+        st.markdown(f"### 🧪 {t['top_consumed_reagents']}")
         reagent_consumption = query_panels("""
             SELECT
                 r.name as reagent_name,
@@ -158,43 +167,43 @@ def run_economic():
         if reagent_consumption is not None and not reagent_consumption.empty:
             st.dataframe(
                 reagent_consumption.rename(columns={
-                    'reagent_name': 'Reagent',
-                    'fluorochrome': 'Fluorochrome',
-                    'brand': 'Brand',
-                    'usage_count': 'Times Used',
-                    'total_volume': 'Total Volume (µL)',
-                    'total_cost': 'Total Cost ($)'
+                    'reagent_name': t['panel_label'],
+                    'fluorochrome': t['fluorochrome_column'],
+                    'brand': t['brand_column'],
+                    'usage_count': t['times_used_column'],
+                    'total_volume': t['total_volume_column'],
+                    'total_cost': t['total_cost_column']
                 }),
                 use_container_width=True,
                 hide_index=True
             )
         else:
-            st.info("No reagent consumption data yet")
+            st.info(t['no_reagent_consumption'])
 
     # =============================================================================
     # LOG USAGE
     # =============================================================================
     with tab2:
-        st.markdown("### Log Panel Usage")
+        st.markdown(f"### {t['log_usage_header']}")
 
-        st.info("📝 Use this form to log panel usage for non-Oncohematology areas (Immunology, Fertility, etc.)")
+        st.info(f"📝 {t['log_usage_info']}")
 
         with st.form("log_usage"):
             col1, col2 = st.columns(2)
 
             with col1:
-                st.markdown("**Execution Details**")
+                st.markdown(f"**{t['execution_details']}**")
 
                 # Select area
                 areas = query_panels("SELECT id, name FROM panel_areas ORDER BY name")
                 if areas is None or areas.empty:
-                    st.warning("No clinical areas configured")
+                    st.warning(t['no_clinical_areas_warning'])
                     area_options = []
                 else:
                     area_options = list(areas['name'])
                     area_ids = list(areas['id'])
 
-                    selected_area_name = st.selectbox("Clinical Area *", area_options)
+                    selected_area_name = st.selectbox(t['clinical_area_label'], area_options)
                     selected_area_idx = area_options.index(selected_area_name)
                     selected_area_id = area_ids[selected_area_idx]
 
@@ -208,25 +217,25 @@ def run_economic():
                     """, (selected_area_id,))
 
                     if panels_in_area is None or panels_in_area.empty:
-                        st.warning(f"No panels available for {selected_area_name}")
+                        st.warning(t['no_panels_available'].format(area=selected_area_name))
                         panel_options = []
                     else:
                         panel_options = [f"{p['name']} (v{p['version']})" for _, p in panels_in_area.iterrows()]
-                        selected_panel_idx = st.selectbox("Panel *", range(len(panel_options)),
+                        selected_panel_idx = st.selectbox(t['panel_label_form'], range(len(panel_options)),
                                                          format_func=lambda x: panel_options[x])
 
-                        execution_date = st.date_input("Execution Date *", value=date.today())
+                        execution_date = st.date_input(t['execution_date_label'], value=date.today())
 
             with col2:
-                st.markdown("**Volume & Cost**")
+                st.markdown(f"**{t['volume_cost_section']}**")
 
-                tests_count = st.number_input("Number of Tests *", min_value=1, value=1, step=1)
-                operator = st.text_input("Operator", placeholder="e.g., Dr. Smith")
-                notes = st.text_area("Notes", height=100, placeholder="Any additional notes...")
+                tests_count = st.number_input(t['tests_count_label'], min_value=1, value=1, step=1)
+                operator = st.text_input(t['operator_label'], placeholder=t['operator_placeholder'])
+                notes = st.text_area(t['notes_label'], height=100, placeholder=t['notes_placeholder'])
 
-            if st.form_submit_button("✓ Log Usage", type="primary", use_container_width=True):
+            if st.form_submit_button(f"✓ {t['log_usage_button']}", type="primary", use_container_width=True):
                 if not area_options or not panel_options:
-                    st.error("Please configure areas and panels first")
+                    st.error(t['config_error'])
                 else:
                     try:
                         panel_id = panels_in_area.iloc[selected_panel_idx]['id']
@@ -237,7 +246,7 @@ def run_economic():
                         cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
 
                         if 'error' in cost_result:
-                            st.warning(f"Could not calculate cost: {cost_result['error']}")
+                            st.warning(t['cost_calculation_error'].format(error=cost_result['error']))
                             cost_per_test = 0.0
                         else:
                             cost_per_test = cost_result.get('total_cost', 0.0)
@@ -259,17 +268,17 @@ def run_economic():
                             operator or None, notes or None, datetime.now().isoformat()
                         ), commit=True)
 
-                        st.success(f"✅ Logged {tests_count} test(s) for {panels_in_area.iloc[selected_panel_idx]['name']}")
-                        st.info(f"Total cost: ${total_cost:.2f}")
+                        st.success(f"✅ {t['logged_success'].format(count=tests_count, panel=panels_in_area.iloc[selected_panel_idx]['name'])}")
+                        st.info(t['total_cost_info'].format(amount=f"{total_cost:.2f}"))
                         st.rerun()
 
                     except Exception as e:
-                        st.error(f"Error logging usage: {e}")
+                        st.error(t['logging_error'].format(error=str(e)))
 
         st.markdown("---")
 
         # Recent logs
-        st.markdown("### Recent Usage Logs")
+        st.markdown(f"### {t['recent_usage_logs']}")
         recent_logs = query_panels("""
             SELECT
                 pul.execution_date,
@@ -289,27 +298,27 @@ def run_economic():
         if recent_logs is not None and not recent_logs.empty:
             st.dataframe(
                 recent_logs.rename(columns={
-                    'execution_date': 'Date',
-                    'panel_name': 'Panel',
-                    'area_name': 'Area',
-                    'tests_count': 'Tests',
-                    'total_cost': 'Cost ($)',
-                    'operator': 'Operator'
+                    'execution_date': t['date_column'],
+                    'panel_name': t['panel_column'],
+                    'area_name': t['area_column'],
+                    'tests_count': t['tests_column'],
+                    'total_cost': t['cost_column'],
+                    'operator': t['operator_column']
                 }),
                 use_container_width=True,
                 hide_index=True
             )
         else:
-            st.info("No usage logs yet")
+            st.info(t['no_usage_logs'])
 
     # =============================================================================
     # REPORTS
     # =============================================================================
     with tab3:
-        st.markdown("### Reports & Analysis")
+        st.markdown(f"### {t['reports_analysis']}")
 
         # Monthly summary
-        st.markdown("#### 📅 Monthly Summary")
+        st.markdown(f"#### 📅 {t['monthly_summary']}")
 
         monthly_data = query_panels("""
             SELECT
@@ -329,37 +338,37 @@ def run_economic():
                 x=monthly_data['month'],
                 y=monthly_data['total_cost'],
                 mode='lines+markers',
-                name='Total Cost',
+                name=t['total_cost_metric'],
                 line=dict(color='#1f77b4', width=2)
             ))
             fig.update_layout(
-                title='Monthly Cost Trend',
-                xaxis_title='Month',
-                yaxis_title='Total Cost ($)',
+                title=t['monthly_cost_trend_title'],
+                xaxis_title=t['month_label'],
+                yaxis_title=t['total_cost_label'],
                 height=400
             )
             st.plotly_chart(fig, use_container_width=True)
 
             st.dataframe(
                 monthly_data.rename(columns={
-                    'month': 'Month',
-                    'total_tests': 'Total Tests',
-                    'total_cost': 'Total Cost ($)'
+                    'month': t['month_label'],
+                    'total_tests': t['total_tests_column'],
+                    'total_cost': t['total_cost_label']
                 }),
                 use_container_width=True,
                 hide_index=True
             )
         else:
-            st.info("No data for monthly analysis")
+            st.info(t['no_monthly_data'])
 
         st.markdown("---")
 
         # Export data
-        st.markdown("#### 📥 Export Data")
+        st.markdown(f"#### 📥 {t['export_data_header']}")
 
         col_e1, col_e2 = st.columns(2)
         with col_e1:
-            if st.button("📊 Export Usage Data (CSV)", use_container_width=True):
+            if st.button(f"📊 {t['export_usage_button']}", use_container_width=True):
                 export_data = query_panels("""
                     SELECT
                         pul.execution_date,
@@ -379,16 +388,16 @@ def run_economic():
                 if export_data is not None and not export_data.empty:
                     csv = export_data.to_csv(index=False)
                     st.download_button(
-                        label="Download CSV",
+                        label=t['download_csv_label'],
                         data=csv,
                         file_name=f"panel_usage_{datetime.now().strftime('%Y%m%d')}.csv",
                         mime="text/csv"
                     )
                 else:
-                    st.warning("No data to export")
+                    st.warning(t['no_data_to_export'])
 
         with col_e2:
-            if st.button("💰 Export Cost Summary (CSV)", use_container_width=True):
+            if st.button(f"💰 {t['cost_summary_button']}", use_container_width=True):
                 cost_summary = query_panels("""
                     SELECT
                         p.name as panel_name,
@@ -410,10 +419,10 @@ def run_economic():
                 if cost_summary is not None and not cost_summary.empty:
                     csv = cost_summary.to_csv(index=False)
                     st.download_button(
-                        label="Download CSV",
+                        label=t['download_csv_label'],
                         data=csv,
                         file_name=f"cost_summary_{datetime.now().strftime('%Y%m%d')}.csv",
                         mime="text/csv"
                     )
                 else:
-                    st.warning("No data to export")
+                    st.warning(t['no_data_to_export'])

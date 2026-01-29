@@ -26,6 +26,10 @@ def run_clinical():
         st.session_state["selected_patient_id"] = None
     if "selected_case_id" not in st.session_state:
         st.session_state["selected_case_id"] = None
+    if "editing_patient" not in st.session_state:
+        st.session_state["editing_patient"] = False
+    if "editing_case" not in st.session_state:
+        st.session_state["editing_case"] = False
 
     # Tab navigation
     tab1, tab2, tab3 = st.tabs([labels['dashboard_tab'], labels['patients_tab'], labels['cases_tab']])
@@ -189,7 +193,14 @@ def run_clinical():
                         st.markdown(f"### {p['initials']}")
                         st.caption(f"MRN: {p['medical_record_number']}")
                     with col_header2:
-                        edit_patient = st.button("Edit Patient", key="edit_patient_btn")
+                        if not st.session_state["editing_patient"]:
+                            if st.button("Edit Patient", key="edit_patient_btn"):
+                                st.session_state["editing_patient"] = True
+                                st.rerun()
+                        else:
+                            if st.button("Cancel Edit", key="cancel_edit_patient_btn"):
+                                st.session_state["editing_patient"] = False
+                                st.rerun()
 
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -215,7 +226,7 @@ def run_clinical():
                         st.text(f"Institution: {p['referring_institution']}")
 
                     # Edit patient form
-                    if edit_patient:
+                    if st.session_state["editing_patient"]:
                         st.markdown("---")
                         st.markdown("### Edit Patient Information")
 
@@ -237,45 +248,41 @@ def run_clinical():
                             edit_status = st.selectbox("Patient Status", ["active", "discharged", "deceased", "transferred"],
                                                       index=["active", "discharged", "deceased", "transferred"].index(p['status']) if p['status'] in ["active", "discharged", "deceased", "transferred"] else 0)
 
-                            col_btn1, col_btn2 = st.columns(2)
-                            with col_btn1:
-                                if st.form_submit_button("Save Changes", use_container_width=True):
-                                    try:
-                                        # Calculate age at time of update
-                                        if edit_dob:
-                                            today = date.today()
-                                            age = today.year - edit_dob.year - ((today.month, today.day) < (edit_dob.month, edit_dob.day))
-                                        else:
-                                            age = p['age_at_registration']
+                            if st.form_submit_button("Save Changes", use_container_width=True):
+                                try:
+                                    # Calculate age at time of update
+                                    if edit_dob:
+                                        today = date.today()
+                                        age = today.year - edit_dob.year - ((today.month, today.day) < (edit_dob.month, edit_dob.day))
+                                    else:
+                                        age = p['age_at_registration']
 
-                                        query_panels("""
-                                            UPDATE patients SET
-                                                medical_record_number = ?,
-                                                initials = ?,
-                                                date_of_birth = ?,
-                                                age_at_registration = ?,
-                                                sex = ?,
-                                                referring_physician = ?,
-                                                referring_institution = ?,
-                                                notes = ?,
-                                                status = ?,
-                                                updated_at = ?
-                                            WHERE id = ?
-                                        """, (
-                                            edit_mrn, edit_initials.upper(),
-                                            str(edit_dob) if edit_dob else None, age, edit_sex,
-                                            edit_physician or None, edit_institution or None,
-                                            edit_notes or None, edit_status,
-                                            datetime.now().isoformat(), p['id']
-                                        ), commit=True)
+                                    query_panels("""
+                                        UPDATE patients SET
+                                            medical_record_number = ?,
+                                            initials = ?,
+                                            date_of_birth = ?,
+                                            age_at_registration = ?,
+                                            sex = ?,
+                                            referring_physician = ?,
+                                            referring_institution = ?,
+                                            notes = ?,
+                                            status = ?,
+                                            updated_at = ?
+                                        WHERE id = ?
+                                    """, (
+                                        edit_mrn, edit_initials.upper(),
+                                        str(edit_dob) if edit_dob else None, age, edit_sex,
+                                        edit_physician or None, edit_institution or None,
+                                        edit_notes or None, edit_status,
+                                        datetime.now().isoformat(), p['id']
+                                    ), commit=True)
 
-                                        st.success("Patient updated successfully")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Error updating patient: {e}")
-                            with col_btn2:
-                                if st.form_submit_button("Cancel", use_container_width=True):
+                                    st.session_state["editing_patient"] = False
+                                    st.success("Patient updated successfully")
                                     st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error updating patient: {e}")
 
                     # Patient cases
                     st.markdown("---")
@@ -411,9 +418,72 @@ def run_clinical():
                 else:
                     c = case.iloc[0]
 
-                    st.markdown(f"### {c['case_number']}")
-                    st.caption(f"Patient: {c['patient_initials']} ({c['patient_mrn']})")
+                    col_header1, col_header2 = st.columns([3, 1])
+                    with col_header1:
+                        st.markdown(f"### {c['case_number']}")
+                        st.caption(f"Patient: {c['patient_initials']} ({c['patient_mrn']})")
+                    with col_header2:
+                        if not st.session_state["editing_case"]:
+                            if st.button("Edit Case", key="edit_case_btn"):
+                                st.session_state["editing_case"] = True
+                                st.rerun()
+                        else:
+                            if st.button("Cancel Edit", key="cancel_edit_case_btn"):
+                                st.session_state["editing_case"] = False
+                                st.rerun()
 
+                    # Case editing form
+                    if st.session_state["editing_case"]:
+                        st.markdown("---")
+                        st.markdown("### Edit Case")
+
+                        with st.form("edit_case_form"):
+                            edit_case_number = st.text_input("Case Number", value=c['case_number'])
+                            edit_clinical_suspicion = st.text_input("Clinical Suspicion", value=c['clinical_suspicion'])
+
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                edit_sample_date = st.date_input("Sample Date", value=datetime.strptime(c['sample_date'], '%Y-%m-%d').date() if c['sample_date'] else date.today())
+                                edit_sample_type = st.selectbox("Sample Type", ["Blood", "Bone Marrow", "CSF", "Tissue", "Other"],
+                                                               index=["Blood", "Bone Marrow", "CSF", "Tissue", "Other"].index(c['sample_type']) if c['sample_type'] in ["Blood", "Bone Marrow", "CSF", "Tissue", "Other"] else 0)
+                            with col2:
+                                edit_priority = st.selectbox("Priority", ["routine", "urgent", "stat"],
+                                                            index=["routine", "urgent", "stat"].index(c['priority']) if c['priority'] in ["routine", "urgent", "stat"] else 0)
+                                edit_status = st.selectbox("Status", ["pending", "screening", "follow-up", "in_progress", "completed", "reported"],
+                                                          index=["pending", "screening", "follow-up", "in_progress", "completed", "reported"].index(c['status']) if c['status'] in ["pending", "screening", "follow-up", "in_progress", "completed", "reported"] else 0)
+
+                            edit_referring_physician = st.text_input("Requesting Physician", value=c['referring_physician'] or "")
+
+                            if st.form_submit_button("Save Changes", use_container_width=True):
+                                try:
+                                    query_panels("""
+                                        UPDATE clinical_cases SET
+                                            case_number = ?,
+                                            clinical_suspicion = ?,
+                                            sample_date = ?,
+                                            sample_type = ?,
+                                            priority = ?,
+                                            status = ?,
+                                            referring_physician = ?,
+                                            updated_at = ?
+                                        WHERE id = ?
+                                    """, (
+                                        edit_case_number, edit_clinical_suspicion,
+                                        str(edit_sample_date), edit_sample_type,
+                                        edit_priority, edit_status,
+                                        edit_referring_physician or None,
+                                        datetime.now().isoformat(), c['id']
+                                    ), commit=True)
+
+                                    st.session_state["editing_case"] = False
+                                    st.success("Case updated successfully")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error updating case: {e}")
+
+                        st.markdown("---")
+
+                    # Display case info
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Status", c['status'].upper())
@@ -425,16 +495,22 @@ def run_clinical():
                     st.markdown(f"**Clinical Suspicion:** {c['clinical_suspicion']}")
                     st.markdown(f"**Sample Type:** {c['sample_type']}")
 
-                    # Assigned panels
+                    # Assigned panels with clinical reasoning tracking
                     st.markdown("---")
-                    st.markdown("### Assigned Panels")
+                    st.markdown("### Panel Assignment History")
+                    st.caption("Track the evolution of this case - screening → follow-up → additional studies")
 
                     case_panels = query_panels("""
                         SELECT
                             cp.id,
                             p.name as panel_name,
+                            p.version,
+                            cp.created_at as assigned_at,
+                            cp.operator as assigned_by,
+                            cp.notes as assignment_reason,
                             cp.run_date,
                             cp.status,
+                            cp.immunophenotype as results,
                             cp.actual_cost
                         FROM case_panels cp
                         JOIN panels p ON p.id = cp.panel_id
@@ -443,14 +519,46 @@ def run_clinical():
                     """, (c['id'],))
 
                     if case_panels is not None and not case_panels.empty:
-                        st.dataframe(case_panels[['panel_name', 'run_date', 'status', 'actual_cost']],
-                                   use_container_width=True, hide_index=True)
-                    else:
-                        st.info("No panels assigned yet")
+                        # Show detailed history
+                        for idx, panel_row in case_panels.iterrows():
+                            with st.container():
+                                st.markdown(f"**{idx+1}. {panel_row['panel_name']}** (v{panel_row['version']}) - {panel_row['status'].upper()}")
 
-                    # Assign new panel
-                    with st.expander("Assign Panel", expanded=False):
-                        # Get all available panels (not just Oncohematology)
+                                col_info1, col_info2, col_info3 = st.columns(3)
+                                with col_info1:
+                                    st.caption(f"📅 Assigned: {panel_row['assigned_at'][:10] if panel_row['assigned_at'] else 'N/A'}")
+                                with col_info2:
+                                    st.caption(f"👤 By: {panel_row['assigned_by'] or 'Unknown'}")
+                                with col_info3:
+                                    st.caption(f"💵 Cost: ${panel_row['actual_cost'] or 0:.2f}")
+
+                                if panel_row['assignment_reason']:
+                                    st.info(f"📝 **Reason:** {panel_row['assignment_reason']}")
+                                else:
+                                    st.caption("_No clinical reasoning recorded_")
+
+                                if panel_row['results']:
+                                    with st.expander("View Results"):
+                                        st.markdown(panel_row['results'])
+
+                                st.markdown("---")
+                    else:
+                        st.info("No panels assigned yet - Start with a screening panel")
+
+                    # Assign new panel/tube
+                    num_existing_panels = len(case_panels) if case_panels is not None and not case_panels.empty else 0
+
+                    if num_existing_panels == 0:
+                        expander_label = "Add Screening Panel"
+                        expander_help = "Start with an initial screening panel"
+                    else:
+                        expander_label = "Add Follow-up Panel/Tube"
+                        expander_help = "Add additional studies based on initial results"
+
+                    with st.expander(expander_label, expanded=False):
+                        st.caption(expander_help)
+
+                        # Get all available panels
                         available_panels = query_panels("""
                             SELECT DISTINCT p.id, p.name, p.version, p.status
                             FROM panels p
@@ -462,27 +570,59 @@ def run_clinical():
                             st.warning("No panels available")
                         else:
                             with st.form("assign_panel_form"):
+                                st.markdown("**Panel Selection**")
                                 panel_options = [f"{p['name']} (v{p['version']}) - {p['status']}" for _, p in available_panels.iterrows()]
                                 selected_panel_idx = st.selectbox("Panel", range(len(panel_options)),
                                                                  format_func=lambda x: panel_options[x])
 
+                                st.markdown("**Clinical Reasoning** (Required)")
+                                if num_existing_panels == 0:
+                                    reason_placeholder = "e.g., Initial screening for suspected acute leukemia"
+                                else:
+                                    reason_placeholder = "e.g., Previous panel showed CD34+ blasts, adding B-ALL markers for confirmation"
+
+                                assignment_reason = st.text_area(
+                                    "Why is this panel being requested?",
+                                    height=100,
+                                    placeholder=reason_placeholder,
+                                    help="Document the clinical reasoning - this is essential for traceability"
+                                )
+
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    assigned_by = st.text_input(
+                                        "Assigned By *",
+                                        placeholder="Your name",
+                                        help="Who is requesting this panel?"
+                                    )
+                                with col2:
+                                    run_date = st.date_input("Scheduled Run Date", value=date.today())
+
                                 if st.form_submit_button("Assign Panel", use_container_width=True):
-                                    try:
-                                        case_panel_id = str(uuid.uuid4())
-                                        panel_id = available_panels.iloc[selected_panel_idx]['id']
+                                    if not assignment_reason or not assignment_reason.strip():
+                                        st.error("Clinical reasoning is required - explain WHY this panel is needed")
+                                    elif not assigned_by or not assigned_by.strip():
+                                        st.error("Please enter who is assigning this panel")
+                                    else:
+                                        try:
+                                            case_panel_id = str(uuid.uuid4())
+                                            panel_id = available_panels.iloc[selected_panel_idx]['id']
 
-                                        query_panels("""
-                                            INSERT INTO case_panels (
-                                                id, case_id, panel_id, status, created_at
-                                            ) VALUES (?, ?, ?, 'pending', ?)
-                                        """, (
-                                            case_panel_id, c['id'], panel_id, datetime.now().isoformat()
-                                        ), commit=True)
+                                            query_panels("""
+                                                INSERT INTO case_panels (
+                                                    id, case_id, panel_id, status,
+                                                    operator, notes, run_date, created_at
+                                                ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+                                            """, (
+                                                case_panel_id, c['id'], panel_id, 'pending',
+                                                assigned_by.strip(), assignment_reason.strip(),
+                                                str(run_date), datetime.now().isoformat()
+                                            ), commit=True)
 
-                                        st.success("Panel assigned successfully")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Error: {e}")
+                                            st.success(f"Panel assigned successfully by {assigned_by}")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error: {e}")
 
                     # Final Diagnosis Section
                     st.markdown("---")

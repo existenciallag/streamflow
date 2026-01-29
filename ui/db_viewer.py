@@ -1,9 +1,14 @@
 import streamlit as st
 import pandas as pd
 from models.loaders import load_table
+from utils.translations import get_lang_dict
 
 def show_db_viewer():
-    st.header("📂 Explorador de Base de Datos")
+    # Get language from session state
+    lang = st.session_state.get('language', 'en')
+    t = get_lang_dict('database', lang)
+
+    st.header(f"📂 {t['header']}")
 
     tables = [
         "brands",
@@ -22,17 +27,17 @@ def show_db_viewer():
         "purchase_order_items"
     ]
 
-    st.subheader("Seleccioná una tabla")
-    table_name = st.selectbox("Tabla", tables)
+    st.subheader(t['select_table_subheader'])
+    table_name = st.selectbox(t['table_label'], tables)
 
     df = load_table(table_name)
 
-    st.markdown(f"### 🔎 Vista previa de **{table_name}** ({len(df)} filas)")
+    st.markdown(f"### 🔎 {t['preview_header']} **{table_name}** ({len(df)} {t['rows_label']})")
 
     st.dataframe(df, use_container_width=True)
 
-    st.markdown("### 🧬 Columnas")
+    st.markdown(f"### 🧬 {t['columns_header']}")
     st.write(pd.DataFrame({
-        "columna": df.columns,
-        "dtype": df.dtypes.astype(str)
+        t['column_label']: df.columns,
+        t['dtype_label']: df.dtypes.astype(str)
     }))
