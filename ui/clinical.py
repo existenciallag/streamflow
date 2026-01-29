@@ -131,7 +131,14 @@ def run_clinical():
                         dob = st.date_input("Date of Birth", value=None, min_value=date(1900, 1, 1), max_value=date.today())
                         sex = st.selectbox("Sex", ["M", "F", "Other", "Unknown"])
                     with col2:
-                        age = st.number_input("Age", min_value=0, max_value=120, value=0)
+                        # Calculate age automatically from DOB
+                        if dob:
+                            today = date.today()
+                            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                            st.info(f"Age: {age} years (calculated from DOB)")
+                        else:
+                            age = None
+                            st.info("Age: Not available (enter DOB)")
                         requesting_physician = st.text_input("Requesting Physician")
 
                     requesting_institution = st.text_input("Requesting Institution")
@@ -182,7 +189,17 @@ def run_clinical():
 
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("Age", p['age_at_registration'] or "—")
+                        # Calculate current age dynamically from DOB
+                        if p['date_of_birth']:
+                            try:
+                                dob = datetime.strptime(p['date_of_birth'], '%Y-%m-%d').date()
+                                today = date.today()
+                                current_age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                                st.metric("Age", f"{current_age} years")
+                            except:
+                                st.metric("Age", p['age_at_registration'] or "—")
+                        else:
+                            st.metric("Age", p['age_at_registration'] or "—")
                     with col2:
                         st.metric("Sex", p['sex'] or "—")
                     with col3:
@@ -366,28 +383,26 @@ def run_clinical():
 
                     # Assign new panel
                     with st.expander("Assign Panel", expanded=False):
-                        # Get oncohematology panels
-                        onco_panels = query_panels("""
-                            SELECT DISTINCT p.id, p.name, p.version
+                        # Get all available panels (not just Oncohematology)
+                        available_panels = query_panels("""
+                            SELECT DISTINCT p.id, p.name, p.version, p.status
                             FROM panels p
-                            JOIN panel_classifications pc ON pc.panel_id = p.id
-                            JOIN panel_areas pa ON pa.id = pc.area_id
-                            WHERE pa.code = 'ONCOHEM' AND p.status IN ('validated', 'active')
+                            WHERE p.status IN ('draft', 'validated', 'active')
                             ORDER BY p.name
                         """)
 
-                        if onco_panels is None or onco_panels.empty:
-                            st.warning("No Oncohematology panels available")
+                        if available_panels is None or available_panels.empty:
+                            st.warning("No panels available")
                         else:
                             with st.form("assign_panel_form"):
-                                panel_options = [f"{p['name']} (v{p['version']})" for _, p in onco_panels.iterrows()]
+                                panel_options = [f"{p['name']} (v{p['version']}) - {p['status']}" for _, p in available_panels.iterrows()]
                                 selected_panel_idx = st.selectbox("Panel", range(len(panel_options)),
                                                                  format_func=lambda x: panel_options[x])
 
                                 if st.form_submit_button("Assign Panel", use_container_width=True):
                                     try:
                                         case_panel_id = str(uuid.uuid4())
-                                        panel_id = onco_panels.iloc[selected_panel_idx]['id']
+                                        panel_id = available_panels.iloc[selected_panel_idx]['id']
 
                                         query_panels("""
                                             INSERT INTO case_panels (

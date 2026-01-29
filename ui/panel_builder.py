@@ -436,8 +436,9 @@ def load_existing_panel_for_editing(panel_id):
     }
 
 
-def save_panel_updates(panel_id, panel_reagents):
-    """Update an existing panel's reagents"""
+def save_panel_updates(panel_id, panel_reagents, sample_type=None, sample_volume=None,
+                      washed_sample=None, description=None, clinical_indication=None):
+    """Update an existing panel's reagents and metadata"""
     try:
         # Delete existing panel reagents
         query_panels("DELETE FROM panel_reagents WHERE panel_id = ?", (panel_id,), commit=True)
@@ -469,11 +470,35 @@ def save_panel_updates(panel_id, panel_reagents):
                 "system"
             ), commit=True)
 
-        # Note: Panel cost is NOT stored - calculated dynamically from current stock
-        # No UPDATE panels SET estimated_cost_per_test needed
+        # Update panel metadata
+        update_fields = ["updated_at = ?"]
+        update_values = [now]
+
+        if sample_type is not None:
+            update_fields.append("sample_type = ?")
+            update_values.append(sample_type)
+
+        if sample_volume is not None:
+            update_fields.append("sample_volume = ?")
+            update_values.append(sample_volume)
+
+        if washed_sample is not None:
+            update_fields.append("washed_sample = ?")
+            update_values.append(1 if washed_sample else 0)
+
+        if description is not None:
+            update_fields.append("description = ?")
+            update_values.append(description)
+
+        if clinical_indication is not None:
+            update_fields.append("clinical_indication = ?")
+            update_values.append(clinical_indication)
+
+        update_values.append(panel_id)
+
         query_panels(
-            "UPDATE panels SET updated_at = ? WHERE id = ?",
-            (now, panel_id),
+            f"UPDATE panels SET {', '.join(update_fields)} WHERE id = ?",
+            tuple(update_values),
             commit=True
         )
 
@@ -800,7 +825,15 @@ def create_panel():
                 # UPDATE existing panel
                 panel_id = st.session_state["editing_panel_id"]
 
-                if save_panel_updates(panel_id, st.session_state["panel_draft_reagents"]):
+                if save_panel_updates(
+                    panel_id,
+                    st.session_state["panel_draft_reagents"],
+                    sample_type=sample_type,
+                    sample_volume=sample_volume,
+                    washed_sample=washed_sample,
+                    description=description,
+                    clinical_indication=clinical_indication
+                ):
                     st.success(f"✅ Panel updated successfully!")
 
                     # Clear editing state
