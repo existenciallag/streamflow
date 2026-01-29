@@ -74,6 +74,19 @@ operational_pages = [
     labels['reagents']
 ]
 
+# Initialize page selection in session state
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = labels['dashboard']
+
+# Operational radio button
+operational_page = st.sidebar.radio(
+    "Operational" if lang == 'en' else "Operacional",
+    operational_pages,
+    index=operational_pages.index(st.session_state['current_page']) if st.session_state['current_page'] in operational_pages else 0,
+    label_visibility="collapsed",
+    key="operational_nav"
+)
+
 # Technical section
 st.sidebar.markdown("---")
 st.sidebar.markdown("**TECHNICAL**" if lang == 'en' else "**TÉCNICO**")
@@ -83,12 +96,24 @@ technical_pages = [
     labels['settings']
 ]
 
-# Single radio for all pages
-page = st.sidebar.radio(
-    "Select page" if lang == 'en' else "Seleccionar página",
-    operational_pages + technical_pages,
-    label_visibility="collapsed"
+# Technical radio button
+technical_page = st.sidebar.radio(
+    "Technical" if lang == 'en' else "Técnico",
+    technical_pages,
+    index=technical_pages.index(st.session_state['current_page']) if st.session_state['current_page'] in technical_pages else 0,
+    label_visibility="collapsed",
+    key="technical_nav"
 )
+
+# Determine active page: if technical page changed from stored state, use it; otherwise use operational
+if technical_page != st.session_state['current_page'] and technical_page in technical_pages:
+    page = technical_page
+    st.session_state['current_page'] = technical_page
+elif operational_page != st.session_state['current_page'] and operational_page in operational_pages:
+    page = operational_page
+    st.session_state['current_page'] = operational_page
+else:
+    page = st.session_state['current_page']
 
 st.title(dashboard_labels['title'])
 

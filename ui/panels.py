@@ -154,7 +154,7 @@ def show_panels(panels_df=None):
         LEFT JOIN cytometers c ON c.id = p.cytometer_id
         LEFT JOIN panel_classifications pc ON pc.panel_id = p.id AND pc.is_primary = 1
         LEFT JOIN panel_areas pa ON pa.id = pc.area_id
-        LEFT JOIN disease_categories dc ON dc.id = pc.disease_category_id
+        LEFT JOIN panel_disease_categories dc ON dc.id = pc.disease_category_id
         ORDER BY p.created_at DESC
     """)
 
