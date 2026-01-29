@@ -63,8 +63,11 @@ common_labels = COMMON[lang]
 # -----------------------------
 st.sidebar.markdown("### " + ("Navigation" if lang == 'en' else "Navegación"))
 
-# Operational section
-st.sidebar.markdown("**OPERATIONAL**" if lang == 'en' else "**OPERACIONAL**")
+# Initialize current page in session state
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = None
+
+# Define sections
 operational_pages = [
     labels['dashboard'],
     labels['panels'],
@@ -74,46 +77,45 @@ operational_pages = [
     labels['reagents']
 ]
 
-# Initialize page selection in session state
-if 'current_page' not in st.session_state:
-    st.session_state['current_page'] = labels['dashboard']
-
-# Operational radio button
-operational_page = st.sidebar.radio(
-    "Operational" if lang == 'en' else "Operacional",
-    operational_pages,
-    index=operational_pages.index(st.session_state['current_page']) if st.session_state['current_page'] in operational_pages else 0,
-    label_visibility="collapsed",
-    key="operational_nav"
-)
-
-# Technical section
-st.sidebar.markdown("---")
-st.sidebar.markdown("**TECHNICAL**" if lang == 'en' else "**TÉCNICO**")
 technical_pages = [
     labels['database'],
     labels['advanced_inventory'],
     labels['settings']
 ]
 
-# Technical radio button
-technical_page = st.sidebar.radio(
-    "Technical" if lang == 'en' else "Técnico",
-    technical_pages,
-    index=technical_pages.index(st.session_state['current_page']) if st.session_state['current_page'] in technical_pages else 0,
-    label_visibility="collapsed",
-    key="technical_nav"
-)
+# OPERATIONAL SECTION
+st.sidebar.markdown("---")
+st.sidebar.markdown("#### " + ("🔬 OPERATIONAL" if lang == 'en' else "🔬 OPERACIONAL"))
 
-# Determine active page: if technical page changed from stored state, use it; otherwise use operational
-if technical_page != st.session_state['current_page'] and technical_page in technical_pages:
-    page = technical_page
-    st.session_state['current_page'] = technical_page
-elif operational_page != st.session_state['current_page'] and operational_page in operational_pages:
-    page = operational_page
-    st.session_state['current_page'] = operational_page
-else:
-    page = st.session_state['current_page']
+for page_name in operational_pages:
+    if st.sidebar.button(
+        page_name,
+        key=f"nav_{page_name}",
+        use_container_width=True,
+        type="primary" if st.session_state['current_page'] == page_name else "secondary"
+    ):
+        st.session_state['current_page'] = page_name
+        st.rerun()
+
+# TECHNICAL SECTION
+st.sidebar.markdown("---")
+st.sidebar.markdown("#### " + ("⚙️ TECHNICAL" if lang == 'en' else "⚙️ TÉCNICO"))
+
+for page_name in technical_pages:
+    if st.sidebar.button(
+        page_name,
+        key=f"nav_{page_name}",
+        use_container_width=True,
+        type="primary" if st.session_state['current_page'] == page_name else "secondary"
+    ):
+        st.session_state['current_page'] = page_name
+        st.rerun()
+
+# Set default page if none selected
+if st.session_state['current_page'] is None:
+    st.session_state['current_page'] = labels['dashboard']
+
+page = st.session_state['current_page']
 
 st.title(dashboard_labels['title'])
 
