@@ -21,7 +21,7 @@ def run_settings():
     st.title("Settings")
 
     # Tab navigation
-    tab1, tab2, tab3 = st.tabs(["Clinical Areas", "Disease Categories", "Application"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Clinical Areas", "Disease Categories", "Diagnostic Algorithms", "Application"])
 
     # =============================================================================
     # CLINICAL AREAS MANAGEMENT
@@ -254,9 +254,148 @@ def run_settings():
                         st.error(f"Error adding category: {e}")
 
     # =============================================================================
-    # APPLICATION SETTINGS
+    # DIAGNOSTIC ALGORITHMS
     # =============================================================================
     with tab3:
+        st.markdown("### Diagnostic Algorithms Management")
+        st.caption("Create and manage clinical interpretation pathways")
+
+        # Display existing algorithms
+        algorithms = query_panels("""
+            SELECT
+                da.id,
+                da.name,
+                da.rule_logic,
+                da.description,
+                pa.name as clinical_area,
+                da.created_by,
+                da.created_at
+            FROM diagnostic_algorithms da
+            LEFT JOIN panel_areas pa ON pa.id = da.clinical_area_id
+            ORDER BY da.name
+        """)
+
+        if algorithms is not None and not algorithms.empty:
+            st.markdown("#### Current Algorithms")
+
+            for idx, alg in algorithms.iterrows():
+                with st.expander(f"{alg['name']} - {alg['clinical_area'] or 'General'}"):
+                    st.markdown(f"**Logic:** `{alg['rule_logic']}`")
+                    if alg['description']:
+                        st.markdown(f"**Description:** {alg['description']}")
+                    st.caption(f"Created by {alg['created_by']} on {alg['created_at'][:10]}")
+
+                    # Edit button
+                    edit_key = f"edit_algo_{alg['id']}"
+                    if st.button(f"Edit '{alg['name']}'", key=f"btn_{edit_key}"):
+                        st.session_state[edit_key] = True
+
+                    if st.session_state.get(edit_key, False):
+                        with st.form(f"edit_algo_form_{alg['id']}"):
+                            edit_algo_name = st.text_input("Name", value=alg['name'])
+                            edit_algo_logic = st.text_input("Rule Logic", value=alg['rule_logic'],
+                                                           help="e.g., LST → CD5+ → B2 and B3")
+                            edit_algo_description = st.text_area("Description", value=alg['description'] or "")
+
+                            # Get areas for dropdown
+                            areas = get_all_areas()
+                            area_options = ["(None)"] + list(areas['name']) if areas is not None and not areas.empty else ["(None)"]
+                            current_area_idx = area_options.index(alg['clinical_area']) if alg['clinical_area'] in area_options else 0
+
+                            edit_algo_area = st.selectbox("Clinical Area", area_options, index=current_area_idx)
+
+                            col_btn1, col_btn2 = st.columns(2)
+                            with col_btn1:
+                                if st.form_submit_button("Save Changes", use_container_width=True):
+                                    try:
+                                        # Get area_id
+                                        area_id = None
+                                        if edit_algo_area != "(None)" and areas is not None:
+                                            area_row = areas[areas['name'] == edit_algo_area]
+                                            if not area_row.empty:
+                                                area_id = area_row.iloc[0]['id']
+
+                                        query_panels("""
+                                            UPDATE diagnostic_algorithms
+                                            SET name = ?, rule_logic = ?, description = ?, clinical_area_id = ?, updated_at = ?
+                                            WHERE id = ?
+                                        """, (edit_algo_name, edit_algo_logic, edit_algo_description, area_id,
+                                             datetime.now().isoformat(), alg['id']), commit=True)
+
+                                        st.success(f"Algorithm '{edit_algo_name}' updated")
+                                        st.session_state[edit_key] = False
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error: {e}")
+                            with col_btn2:
+                                if st.form_submit_button("Cancel", use_container_width=True):
+                                    st.session_state[edit_key] = False
+                                    st.rerun()
+
+                    # Delete button
+                    if st.button(f"Delete '{alg['name']}'", key=f"del_{alg['id']}", type="secondary"):
+                        try:
+                            query_panels("DELETE FROM diagnostic_algorithms WHERE id = ?", (alg['id'],), commit=True)
+                            st.success(f"Algorithm '{alg['name']}' deleted")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+        else:
+            st.info("No algorithms configured yet")
+
+        # Add new algorithm
+        st.markdown("---")
+        st.markdown("#### Add New Diagnostic Algorithm")
+
+        with st.form("new_algorithm_form"):
+            new_algo_name = st.text_input("Algorithm Name *", placeholder="e.g., LST B-Cell Panel")
+            new_algo_logic = st.text_input("Rule Logic *",
+                                          placeholder="e.g., LST → CD5+ → B2 and B3",
+                                          help="Define the clinical logic pathway")
+            new_algo_description = st.text_area("Description",
+                                               placeholder="Explain when and how to use this algorithm...",
+                                               height=100)
+
+            # Area selection
+            areas = get_all_areas()
+            if areas is not None and not areas.empty:
+                area_options = ["(None)"] + list(areas['name'])
+                new_algo_area = st.selectbox("Clinical Area", area_options)
+            else:
+                st.warning("No clinical areas available")
+                new_algo_area = "(None)"
+
+            new_algo_created_by = st.text_input("Created By *", placeholder="Your name")
+
+            if st.form_submit_button("Create Algorithm", use_container_width=True):
+                if not new_algo_name or not new_algo_logic or not new_algo_created_by:
+                    st.error("Please fill in all required fields (*)")
+                else:
+                    try:
+                        # Get area_id
+                        area_id = None
+                        if new_algo_area != "(None)" and areas is not None:
+                            area_row = areas[areas['name'] == new_algo_area]
+                            if not area_row.empty:
+                                area_id = area_row.iloc[0]['id']
+
+                        algo_id = str(uuid.uuid4())
+                        query_panels("""
+                            INSERT INTO diagnostic_algorithms (
+                                id, name, rule_logic, description, clinical_area_id, created_by, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (algo_id, new_algo_name, new_algo_logic, new_algo_description, area_id,
+                             new_algo_created_by, datetime.now().isoformat()), commit=True)
+
+                        st.success(f"Algorithm '{new_algo_name}' created successfully")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error creating algorithm: {e}")
+
+    # =============================================================================
+    # APPLICATION SETTINGS
+    # =============================================================================
+    with tab4:
         st.markdown("### Application Settings")
 
         # Language setting

@@ -188,18 +188,42 @@ def run_clinical():
                 else:
                     p = patient.iloc[0]
 
-                    col_header1, col_header2 = st.columns([3, 1])
+                    col_header1, col_header2, col_header3 = st.columns([3, 1, 1])
                     with col_header1:
                         st.markdown(f"### {p['initials']}")
                         st.caption(f"MRN: {p['medical_record_number']}")
                     with col_header2:
                         if not st.session_state["editing_patient"]:
-                            if st.button("Edit Patient", key="edit_patient_btn"):
+                            if st.button("Edit Patient", key="edit_patient_btn", use_container_width=True):
                                 st.session_state["editing_patient"] = True
                                 st.rerun()
                         else:
-                            if st.button("Cancel Edit", key="cancel_edit_patient_btn"):
+                            if st.button("Cancel Edit", key="cancel_edit_patient_btn", use_container_width=True):
                                 st.session_state["editing_patient"] = False
+                                st.rerun()
+                    with col_header3:
+                        if st.button("Delete", key="delete_patient_btn", type="secondary", use_container_width=True):
+                            st.session_state["confirm_delete_patient"] = True
+                            st.rerun()
+
+                    # Delete confirmation dialog
+                    if st.session_state.get("confirm_delete_patient", False):
+                        st.warning("⚠️ Are you sure you want to delete this patient? This will also delete all related cases, panel assignments, and diagnoses.")
+                        col_conf1, col_conf2 = st.columns(2)
+                        with col_conf1:
+                            if st.button("✓ Yes, Delete", type="primary", key="confirm_delete_yes"):
+                                try:
+                                    # Delete patient and cascade to related records
+                                    query_panels("DELETE FROM patients WHERE id = ?", (p['id'],), commit=True)
+                                    st.success(f"Patient {p['initials']} deleted successfully")
+                                    st.session_state["selected_patient_id"] = None
+                                    st.session_state["confirm_delete_patient"] = False
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error deleting patient: {e}")
+                        with col_conf2:
+                            if st.button("✗ Cancel", key="confirm_delete_no"):
+                                st.session_state["confirm_delete_patient"] = False
                                 st.rerun()
 
                     col1, col2, col3 = st.columns(3)
@@ -483,12 +507,29 @@ def run_clinical():
 
                         st.markdown("---")
 
-                    # Display case info
+                    # Display case info with visual indicators
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("Status", c['status'].upper())
+                        # Status with color indicators
+                        status_colors = {
+                            'pending': '🟡',
+                            'screening': '🔵',
+                            'follow-up': '🟠',
+                            'in_progress': '🔵',
+                            'completed': '🟢',
+                            'reported': '✅'
+                        }
+                        status_icon = status_colors.get(c['status'], '⚪')
+                        st.metric("Status", f"{status_icon} {c['status'].upper()}")
                     with col2:
-                        st.metric("Priority", c['priority'].upper())
+                        # Priority with color indicators
+                        priority_colors = {
+                            'routine': '🟢',
+                            'urgent': '🟠',
+                            'stat': '🔴'
+                        }
+                        priority_icon = priority_colors.get(c['priority'], '⚪')
+                        st.metric("Priority", f"{priority_icon} {c['priority'].upper()}")
                     with col3:
                         st.metric("Sample Date", str(c['sample_date']))
 
@@ -519,27 +560,125 @@ def run_clinical():
                     """, (c['id'],))
 
                     if case_panels is not None and not case_panels.empty:
-                        # Show detailed history
+                        # Show detailed history with edit capability
                         for idx, panel_row in case_panels.iterrows():
+                            panel_assignment_id = panel_row['id']
+                            edit_key = f"edit_panel_{panel_assignment_id}"
+
+                            # Check if this assignment is being edited
+                            is_editing = st.session_state.get(edit_key, False)
+
                             with st.container():
-                                st.markdown(f"**{idx+1}. {panel_row['panel_name']}** (v{panel_row['version']}) - {panel_row['status'].upper()}")
+                                # Status badge for panel assignment
+                                status_badges = {
+                                    'pending': '🟡 Pending',
+                                    'in_process': '🔵 In Process',
+                                    'acquired': '🟣 Acquired',
+                                    'analyzed': '🟢 Analyzed',
+                                    'completed': '✅ Completed'
+                                }
+                                status_display = status_badges.get(panel_row['status'], panel_row['status'].upper())
 
-                                col_info1, col_info2, col_info3 = st.columns(3)
-                                with col_info1:
-                                    st.caption(f"📅 Assigned: {panel_row['assigned_at'][:10] if panel_row['assigned_at'] else 'N/A'}")
-                                with col_info2:
-                                    st.caption(f"👤 By: {panel_row['assigned_by'] or 'Unknown'}")
-                                with col_info3:
-                                    st.caption(f"💵 Cost: ${panel_row['actual_cost'] or 0:.2f}")
+                                col_title, col_edit = st.columns([4, 1])
+                                with col_title:
+                                    st.markdown(f"**{idx+1}. {panel_row['panel_name']}** (v{panel_row['version']}) - {status_display}")
+                                with col_edit:
+                                    if not is_editing:
+                                        if st.button("✏️ Edit", key=f"btn_edit_{panel_assignment_id}", use_container_width=True):
+                                            st.session_state[edit_key] = True
+                                            st.rerun()
+                                    else:
+                                        if st.button("✖ Cancel", key=f"btn_cancel_{panel_assignment_id}", use_container_width=True):
+                                            st.session_state[edit_key] = False
+                                            st.rerun()
 
-                                if panel_row['assignment_reason']:
-                                    st.info(f"📝 **Reason:** {panel_row['assignment_reason']}")
+                                if is_editing:
+                                    # Edit form for this panel assignment
+                                    with st.form(f"edit_assignment_{panel_assignment_id}"):
+                                        st.markdown("**Edit Panel Assignment**")
+
+                                        col_e1, col_e2 = st.columns(2)
+                                        with col_e1:
+                                            edit_asmt_status = st.selectbox(
+                                                "Status",
+                                                ["pending", "in_process", "acquired", "analyzed", "completed"],
+                                                index=["pending", "in_process", "acquired", "analyzed", "completed"].index(panel_row['status']) if panel_row['status'] in ["pending", "in_process", "acquired", "analyzed", "completed"] else 0,
+                                                key=f"status_{panel_assignment_id}"
+                                            )
+                                            edit_asmt_operator = st.text_input(
+                                                "Operator",
+                                                value=panel_row['assigned_by'] or "",
+                                                key=f"operator_{panel_assignment_id}"
+                                            )
+                                        with col_e2:
+                                            edit_asmt_date = st.date_input(
+                                                "Run Date",
+                                                value=datetime.strptime(panel_row['run_date'], '%Y-%m-%d').date() if panel_row['run_date'] else date.today(),
+                                                key=f"date_{panel_assignment_id}"
+                                            )
+                                            edit_asmt_cost = st.number_input(
+                                                "Actual Cost",
+                                                value=float(panel_row['actual_cost'] or 0),
+                                                min_value=0.0,
+                                                key=f"cost_{panel_assignment_id}"
+                                            )
+
+                                        edit_asmt_reason = st.text_area(
+                                            "Clinical Reasoning",
+                                            value=panel_row['assignment_reason'] or "",
+                                            key=f"reason_{panel_assignment_id}"
+                                        )
+
+                                        edit_asmt_results = st.text_area(
+                                            "Results/Immunophenotype",
+                                            value=panel_row['results'] or "",
+                                            key=f"results_{panel_assignment_id}",
+                                            height=150
+                                        )
+
+                                        if st.form_submit_button("Save Changes", use_container_width=True):
+                                            try:
+                                                query_panels("""
+                                                    UPDATE case_panels SET
+                                                        status = ?,
+                                                        operator = ?,
+                                                        run_date = ?,
+                                                        actual_cost = ?,
+                                                        notes = ?,
+                                                        immunophenotype = ?
+                                                    WHERE id = ?
+                                                """, (
+                                                    edit_asmt_status,
+                                                    edit_asmt_operator,
+                                                    str(edit_asmt_date),
+                                                    edit_asmt_cost,
+                                                    edit_asmt_reason,
+                                                    edit_asmt_results,
+                                                    panel_assignment_id
+                                                ), commit=True)
+                                                st.success("Panel assignment updated")
+                                                st.session_state[edit_key] = False
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error: {e}")
                                 else:
-                                    st.caption("_No clinical reasoning recorded_")
+                                    # Display mode
+                                    col_info1, col_info2, col_info3 = st.columns(3)
+                                    with col_info1:
+                                        st.caption(f"📅 Assigned: {panel_row['assigned_at'][:10] if panel_row['assigned_at'] else 'N/A'}")
+                                    with col_info2:
+                                        st.caption(f"👤 By: {panel_row['assigned_by'] or 'Unknown'}")
+                                    with col_info3:
+                                        st.caption(f"💵 Cost: ${panel_row['actual_cost'] or 0:.2f}")
 
-                                if panel_row['results']:
-                                    with st.expander("View Results"):
-                                        st.markdown(panel_row['results'])
+                                    if panel_row['assignment_reason']:
+                                        st.info(f"📝 **Reason:** {panel_row['assignment_reason']}")
+                                    else:
+                                        st.caption("_No clinical reasoning recorded_")
+
+                                    if panel_row['results']:
+                                        with st.expander("View Results"):
+                                            st.markdown(panel_row['results'])
 
                                 st.markdown("---")
                     else:
@@ -620,6 +759,99 @@ def run_clinical():
                                             ), commit=True)
 
                                             st.success(f"Panel assigned successfully by {assigned_by}")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error: {e}")
+
+                    # Diagnostic Algorithms Section
+                    st.markdown("---")
+                    st.markdown("### Diagnostic Algorithms")
+                    st.caption("Clinical interpretation pathways - NOT panel/tube assignments")
+
+                    # Get algorithms assigned to this case
+                    case_algorithms = query_panels("""
+                        SELECT
+                            ca.id,
+                            da.name as algorithm_name,
+                            da.rule_logic,
+                            da.description,
+                            ca.assigned_date,
+                            ca.assigned_by,
+                            ca.notes,
+                            ca.status
+                        FROM case_algorithms ca
+                        JOIN diagnostic_algorithms da ON da.id = ca.algorithm_id
+                        WHERE ca.case_id = ?
+                        ORDER BY ca.assigned_date DESC
+                    """, (c['id'],))
+
+                    if case_algorithms is not None and not case_algorithms.empty:
+                        for idx, alg in case_algorithms.iterrows():
+                            status_badges = {
+                                'active': '🟢 Active',
+                                'completed': '✅ Completed',
+                                'superseded': '🔄 Superseded'
+                            }
+                            status_display = status_badges.get(alg['status'], alg['status'])
+
+                            with st.container():
+                                st.markdown(f"**{alg['algorithm_name']}** - {status_display}")
+                                st.code(alg['rule_logic'], language=None)
+                                if alg['description']:
+                                    st.caption(f"ℹ️ {alg['description']}")
+                                if alg['notes']:
+                                    st.info(f"📝 {alg['notes']}")
+                                st.caption(f"Assigned by {alg['assigned_by']} on {alg['assigned_date'][:10]}")
+                                st.markdown("---")
+                    else:
+                        st.info("No diagnostic algorithms assigned yet")
+
+                    # Assign Algorithm
+                    with st.expander("Assign Diagnostic Algorithm", expanded=False):
+                        # Get all available algorithms
+                        available_algorithms = query_panels("""
+                            SELECT id, name, rule_logic, description
+                            FROM diagnostic_algorithms
+                            ORDER BY name
+                        """)
+
+                        if available_algorithms is None or available_algorithms.empty:
+                            st.warning("No algorithms available. Create algorithms in Settings first.")
+                        else:
+                            with st.form("assign_algorithm_form"):
+                                algo_options = [f"{row['name']}: {row['rule_logic']}" for _, row in available_algorithms.iterrows()]
+                                selected_algo_idx = st.selectbox("Algorithm", range(len(algo_options)),
+                                                                format_func=lambda x: algo_options[x])
+
+                                col_a1, col_a2 = st.columns(2)
+                                with col_a1:
+                                    algo_assigned_by = st.text_input("Assigned By *", placeholder="Your name")
+                                with col_a2:
+                                    algo_assigned_date = st.date_input("Date", value=date.today())
+
+                                algo_notes = st.text_area("Notes",
+                                                         placeholder="Why this algorithm was chosen, clinical context...",
+                                                         height=100)
+
+                                if st.form_submit_button("Assign Algorithm", use_container_width=True):
+                                    if not algo_assigned_by or not algo_assigned_by.strip():
+                                        st.error("Please enter who is assigning this algorithm")
+                                    else:
+                                        try:
+                                            algorithm_id = available_algorithms.iloc[selected_algo_idx]['id']
+                                            case_algo_id = str(uuid.uuid4())
+
+                                            query_panels("""
+                                                INSERT INTO case_algorithms (
+                                                    id, case_id, algorithm_id, assigned_date, assigned_by, notes, status, created_at
+                                                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+                                            """, (
+                                                case_algo_id, c['id'], algorithm_id, str(algo_assigned_date),
+                                                algo_assigned_by.strip(), algo_notes.strip() if algo_notes else None,
+                                                datetime.now().isoformat()
+                                            ), commit=True)
+
+                                            st.success("Algorithm assigned successfully")
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Error: {e}")
