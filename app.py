@@ -31,6 +31,7 @@ from ui.panel_builder import create_panel  # <-- Panel Builder
 from ui.clinical import run_clinical
 from ui.economic import run_economic
 from ui.settings import run_settings
+from ui.general_reagents import run_general_reagents_crud
 
 # -----------------------------
 # Configuración página
@@ -74,7 +75,8 @@ operational_pages = [
     labels['panel_builder'],
     labels['clinical'],
     labels['economic'],
-    labels['reagents']
+    labels['reagents'],
+    labels['general_reagents']
 ]
 
 technical_pages = [
@@ -152,6 +154,13 @@ inventory = build_inventory(
 # -----------------------------
 if page == labels['reagents']:
     run_crud()
+    st.stop()
+
+# -----------------------------
+# General Reagents (CRUD)
+# -----------------------------
+if page == labels['general_reagents']:
+    run_general_reagents_crud()
     st.stop()
 
 # -----------------------------
