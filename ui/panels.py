@@ -147,9 +147,14 @@ def show_panels(panels_df=None):
             p.clinical_indication,
             p.estimated_cost_per_test,
             c.name as cytometer_name,
+            pa.name as clinical_area,
+            dc.name as disease_category,
             p.created_at
         FROM panels p
         LEFT JOIN cytometers c ON c.id = p.cytometer_id
+        LEFT JOIN panel_classifications pc ON pc.panel_id = p.id AND pc.is_primary = 1
+        LEFT JOIN panel_areas pa ON pa.id = pc.area_id
+        LEFT JOIN disease_categories dc ON dc.id = pc.disease_category_id
         ORDER BY p.created_at DESC
     """)
 
@@ -172,9 +177,16 @@ def show_panels(panels_df=None):
                 df["name"].astype(str).str.lower().str.contains(search.lower(), na=False)
             ]
 
-        # Display panel list with semantic info
-        display_df = df[["name", "version", "status"]].copy()
+        # Display panel list with semantic info including categories
+        display_df = df[["name", "version", "status", "clinical_area"]].copy()
         display_df["status"] = display_df["status"].fillna("draft")
+        display_df["clinical_area"] = display_df["clinical_area"].fillna("—")
+        display_df = display_df.rename(columns={
+            "name": "Name",
+            "version": "Version",
+            "status": "Status",
+            "clinical_area": "Area"
+        })
 
         selected = st.dataframe(
             display_df,
@@ -280,18 +292,15 @@ def show_panels(panels_df=None):
             with col6:
                 st.metric("Created", panel.get("created_at", "—")[:10] if panel.get("created_at") else "—")
 
-            # Display categories
-            from utils.categories import get_primary_area, get_primary_disease_category
-            area_id, area_name = get_primary_area(panel_id)
-            disease_id, disease_name = get_primary_disease_category(panel_id)
+            # Display categories - ALWAYS show them (even if empty)
+            st.markdown("---")
+            st.markdown(f"### {labels.get('classification', 'Classification')}")
 
-            if area_name or disease_name:
-                st.markdown("---")
-                col_cat1, col_cat2 = st.columns(2)
-                with col_cat1:
-                    st.metric("Clinical Area", area_name or "—")
-                with col_cat2:
-                    st.metric("Disease Category", disease_name or "—")
+            col_cat1, col_cat2 = st.columns(2)
+            with col_cat1:
+                st.metric(labels.get('category', 'Category'), panel.get("clinical_area") or "—")
+            with col_cat2:
+                st.metric(labels.get('subcategory', 'Subcategory'), panel.get("disease_category") or "—")
 
             if panel.get("clinical_indication"):
                 st.markdown("**Clinical Indication:**")

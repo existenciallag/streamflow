@@ -848,6 +848,11 @@ def create_panel():
                     description=description,
                     clinical_indication=clinical_indication
                 ):
+                    # Update panel classification (area + disease category)
+                    if selected_area_id:
+                        from utils.categories import set_panel_classification
+                        set_panel_classification(panel_id, selected_area_id, selected_disease_category_id, is_primary=True)
+
                     st.success(f"✅ {t['panel_updated_success']}")
 
                     # Clear editing state
