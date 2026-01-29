@@ -614,7 +614,7 @@ def run_clinical():
                                                     operator, notes, run_date, created_at
                                                 ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
                                             """, (
-                                                case_panel_id, c['id'], panel_id, 'pending',
+                                                case_panel_id, c['id'], panel_id,
                                                 assigned_by.strip(), assignment_reason.strip(),
                                                 str(run_date), datetime.now().isoformat()
                                             ), commit=True)
