@@ -184,8 +184,12 @@ def run_clinical():
                 else:
                     p = patient.iloc[0]
 
-                    st.markdown(f"### 👤 {p['initials']}")
-                    st.caption(f"MRN: {p['medical_record_number']}")
+                    col_header1, col_header2 = st.columns([3, 1])
+                    with col_header1:
+                        st.markdown(f"### {p['initials']}")
+                        st.caption(f"MRN: {p['medical_record_number']}")
+                    with col_header2:
+                        edit_patient = st.button("Edit Patient", key="edit_patient_btn")
 
                     col1, col2, col3 = st.columns(3)
                     with col1:
@@ -209,6 +213,69 @@ def run_clinical():
                         st.text(f"Requesting: Dr. {p['referring_physician']}")
                     if p['referring_institution']:
                         st.text(f"Institution: {p['referring_institution']}")
+
+                    # Edit patient form
+                    if edit_patient:
+                        st.markdown("---")
+                        st.markdown("### Edit Patient Information")
+
+                        with st.form("edit_patient_form"):
+                            edit_mrn = st.text_input("Admission Protocol", value=p['medical_record_number'])
+                            edit_initials = st.text_input("Initials", value=p['initials'])
+
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                current_dob = datetime.strptime(p['date_of_birth'], '%Y-%m-%d').date() if p['date_of_birth'] else None
+                                edit_dob = st.date_input("Date of Birth", value=current_dob, min_value=date(1900, 1, 1), max_value=date.today())
+                                edit_sex = st.selectbox("Sex", ["M", "F", "Other", "Unknown"],
+                                                       index=["M", "F", "Other", "Unknown"].index(p['sex']) if p['sex'] in ["M", "F", "Other", "Unknown"] else 3)
+                            with col2:
+                                edit_physician = st.text_input("Requesting Physician", value=p['referring_physician'] or "")
+                                edit_institution = st.text_input("Requesting Institution", value=p['referring_institution'] or "")
+
+                            edit_notes = st.text_area("Notes", value=p['notes'] or "", height=80)
+                            edit_status = st.selectbox("Patient Status", ["active", "discharged", "deceased", "transferred"],
+                                                      index=["active", "discharged", "deceased", "transferred"].index(p['status']) if p['status'] in ["active", "discharged", "deceased", "transferred"] else 0)
+
+                            col_btn1, col_btn2 = st.columns(2)
+                            with col_btn1:
+                                if st.form_submit_button("Save Changes", use_container_width=True):
+                                    try:
+                                        # Calculate age at time of update
+                                        if edit_dob:
+                                            today = date.today()
+                                            age = today.year - edit_dob.year - ((today.month, today.day) < (edit_dob.month, edit_dob.day))
+                                        else:
+                                            age = p['age_at_registration']
+
+                                        query_panels("""
+                                            UPDATE patients SET
+                                                medical_record_number = ?,
+                                                initials = ?,
+                                                date_of_birth = ?,
+                                                age_at_registration = ?,
+                                                sex = ?,
+                                                referring_physician = ?,
+                                                referring_institution = ?,
+                                                notes = ?,
+                                                status = ?,
+                                                updated_at = ?
+                                            WHERE id = ?
+                                        """, (
+                                            edit_mrn, edit_initials.upper(),
+                                            str(edit_dob) if edit_dob else None, age, edit_sex,
+                                            edit_physician or None, edit_institution or None,
+                                            edit_notes or None, edit_status,
+                                            datetime.now().isoformat(), p['id']
+                                        ), commit=True)
+
+                                        st.success("Patient updated successfully")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error updating patient: {e}")
+                            with col_btn2:
+                                if st.form_submit_button("Cancel", use_container_width=True):
+                                    st.rerun()
 
                     # Patient cases
                     st.markdown("---")
@@ -416,3 +483,119 @@ def run_clinical():
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Error: {e}")
+
+                    # Final Diagnosis Section
+                    st.markdown("---")
+                    st.markdown("### Final Diagnosis")
+
+                    # Check if diagnosis exists
+                    diagnosis = query_panels("""
+                        SELECT * FROM case_diagnoses WHERE case_id = ?
+                    """, (c['id'],))
+
+                    if diagnosis is not None and not diagnosis.empty:
+                        d = diagnosis.iloc[0]
+                        st.markdown(f"**Diagnosis:** {d['final_diagnosis']}")
+                        if d['icd_code']:
+                            st.markdown(f"**ICD Code:** {d['icd_code']}")
+                        if d['who_classification']:
+                            st.markdown(f"**WHO Classification:** {d['who_classification']}")
+                        if d['fab_classification']:
+                            st.markdown(f"**FAB Classification:** {d['fab_classification']}")
+                        if d['additional_findings']:
+                            st.markdown(f"**Additional Findings:** {d['additional_findings']}")
+                        if d['reported_by']:
+                            st.caption(f"Reported by: {d['reported_by']} on {d['report_date'] if d['report_date'] else 'N/A'}")
+                    else:
+                        st.info("No diagnosis entered yet")
+
+                    # Add/Edit Diagnosis Form
+                    with st.expander("Enter/Update Diagnosis", expanded=False):
+                        with st.form("diagnosis_form"):
+                            st.markdown("**Diagnosis Information**")
+
+                            diag_text = st.text_area("Final Diagnosis *",
+                                                    value=diagnosis.iloc[0]['final_diagnosis'] if not diagnosis.empty else "",
+                                                    placeholder="Enter final diagnosis",
+                                                    height=100)
+
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                icd_code = st.text_input("ICD-10 Code",
+                                                        value=diagnosis.iloc[0]['icd_code'] if not diagnosis.empty else "",
+                                                        placeholder="e.g., C91.0")
+                                who_class = st.text_input("WHO Classification",
+                                                         value=diagnosis.iloc[0]['who_classification'] if not diagnosis.empty else "",
+                                                         placeholder="e.g., WHO 2022")
+                            with col2:
+                                fab_class = st.text_input("FAB Classification",
+                                                         value=diagnosis.iloc[0]['fab_classification'] if not diagnosis.empty else "",
+                                                         placeholder="e.g., FAB M3")
+                                report_date = st.date_input("Report Date",
+                                                           value=date.today())
+
+                            additional_findings = st.text_area("Additional Findings",
+                                                             value=diagnosis.iloc[0]['additional_findings'] if not diagnosis.empty else "",
+                                                             height=80,
+                                                             placeholder="Any additional clinical findings or notes")
+
+                            col_corr1, col_corr2 = st.columns(2)
+                            with col_corr1:
+                                corr_morphology = st.checkbox("Correlates with morphology",
+                                                             value=bool(diagnosis.iloc[0]['correlates_with_morphology']) if not diagnosis.empty else False)
+                            with col_corr2:
+                                corr_cytogenetics = st.checkbox("Correlates with cytogenetics",
+                                                               value=bool(diagnosis.iloc[0]['correlates_with_cytogenetics']) if not diagnosis.empty else False)
+
+                            reported_by = st.text_input("Reported By",
+                                                       value=diagnosis.iloc[0]['reported_by'] if not diagnosis.empty else "",
+                                                       placeholder="Physician name")
+
+                            if st.form_submit_button("Save Diagnosis", use_container_width=True):
+                                if not diag_text:
+                                    st.error("Final diagnosis is required")
+                                else:
+                                    try:
+                                        if diagnosis.empty:
+                                            # Insert new diagnosis
+                                            query_panels("""
+                                                INSERT INTO case_diagnoses (
+                                                    id, case_id, final_diagnosis, icd_code,
+                                                    who_classification, fab_classification,
+                                                    correlates_with_morphology, correlates_with_cytogenetics,
+                                                    additional_findings, reported_by, report_date, created_at
+                                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            """, (
+                                                str(uuid.uuid4()), c['id'], diag_text, icd_code or None,
+                                                who_class or None, fab_class or None,
+                                                1 if corr_morphology else 0, 1 if corr_cytogenetics else 0,
+                                                additional_findings or None, reported_by or None,
+                                                str(report_date), datetime.now().isoformat()
+                                            ), commit=True)
+                                        else:
+                                            # Update existing diagnosis
+                                            query_panels("""
+                                                UPDATE case_diagnoses SET
+                                                    final_diagnosis = ?,
+                                                    icd_code = ?,
+                                                    who_classification = ?,
+                                                    fab_classification = ?,
+                                                    correlates_with_morphology = ?,
+                                                    correlates_with_cytogenetics = ?,
+                                                    additional_findings = ?,
+                                                    reported_by = ?,
+                                                    report_date = ?,
+                                                    updated_at = ?
+                                                WHERE case_id = ?
+                                            """, (
+                                                diag_text, icd_code or None,
+                                                who_class or None, fab_class or None,
+                                                1 if corr_morphology else 0, 1 if corr_cytogenetics else 0,
+                                                additional_findings or None, reported_by or None,
+                                                str(report_date), datetime.now().isoformat(), c['id']
+                                            ), commit=True)
+
+                                        st.success("Diagnosis saved successfully")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error saving diagnosis: {e}")
