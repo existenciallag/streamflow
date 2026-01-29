@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, date
 from ui.crud_panels import query_panels
 from utils.translations import CLINICAL
+from utils.cost_utils import get_case_total_cost, get_panel_cost_breakdown
 
 
 def run_clinical():
@@ -536,6 +537,30 @@ def run_clinical():
                     st.markdown(f"**Clinical Suspicion:** {c['clinical_suspicion']}")
                     st.markdown(f"**Sample Type:** {c['sample_type']}")
 
+                    # Case total cost - calculated dynamically from all assigned panels
+                    st.markdown("---")
+                    case_cost_info = get_case_total_cost(c['id'])
+
+                    col_cost1, col_cost2 = st.columns([2, 1])
+                    with col_cost1:
+                        st.markdown(f"### 💰 Total Case Cost: **${case_cost_info['total_cost']:.2f}**")
+                    with col_cost2:
+                        if case_cost_info.get('incomplete_panels'):
+                            st.warning(f"⚠️ Incomplete pricing")
+                            with st.expander("View details"):
+                                st.caption("Panels with missing reagent prices:")
+                                for panel_name in case_cost_info['incomplete_panels']:
+                                    st.caption(f"• {panel_name}")
+
+                    # Show breakdown if panels exist
+                    if case_cost_info.get('panel_costs'):
+                        with st.expander("Cost Breakdown by Panel"):
+                            for panel_cost in case_cost_info['panel_costs']:
+                                cost_str = f"${panel_cost['cost']:.2f}"
+                                if not panel_cost['is_complete']:
+                                    cost_str += " ⚠️"
+                                st.markdown(f"• **{panel_cost['panel_name']}**: {cost_str}")
+
                     # Assigned panels with clinical reasoning tracking
                     st.markdown("---")
                     st.markdown("### Panel Assignment History")
@@ -544,6 +569,7 @@ def run_clinical():
                     case_panels = query_panels("""
                         SELECT
                             cp.id,
+                            cp.panel_id,
                             p.name as panel_name,
                             p.version,
                             cp.created_at as assigned_at,
@@ -551,8 +577,7 @@ def run_clinical():
                             cp.notes as assignment_reason,
                             cp.run_date,
                             cp.status,
-                            cp.immunophenotype as results,
-                            cp.actual_cost
+                            cp.immunophenotype as results
                         FROM case_panels cp
                         JOIN panels p ON p.id = cp.panel_id
                         WHERE cp.case_id = ?
@@ -616,12 +641,13 @@ def run_clinical():
                                                 value=datetime.strptime(panel_row['run_date'], '%Y-%m-%d').date() if panel_row['run_date'] else date.today(),
                                                 key=f"date_{panel_assignment_id}"
                                             )
-                                            edit_asmt_cost = st.number_input(
-                                                "Actual Cost",
-                                                value=float(panel_row['actual_cost'] or 0),
-                                                min_value=0.0,
-                                                key=f"cost_{panel_assignment_id}"
-                                            )
+                                            # Cost is calculated dynamically from panel definition
+                                            st.caption("Cost (calculated dynamically)")
+                                            panel_cost = get_panel_cost_breakdown(panel_row['panel_id'])
+                                            cost_display = f"${panel_cost['total_cost']:.2f}"
+                                            if not panel_cost['is_complete']:
+                                                cost_display += " ⚠️"
+                                            st.info(cost_display)
 
                                         edit_asmt_reason = st.text_area(
                                             "Clinical Reasoning",
@@ -638,12 +664,12 @@ def run_clinical():
 
                                         if st.form_submit_button("Save Changes", use_container_width=True):
                                             try:
+                                                # Cost is NOT stored - it's calculated dynamically from panel definition
                                                 query_panels("""
                                                     UPDATE case_panels SET
                                                         status = ?,
                                                         operator = ?,
                                                         run_date = ?,
-                                                        actual_cost = ?,
                                                         notes = ?,
                                                         immunophenotype = ?
                                                     WHERE id = ?
@@ -651,7 +677,6 @@ def run_clinical():
                                                     edit_asmt_status,
                                                     edit_asmt_operator,
                                                     str(edit_asmt_date),
-                                                    edit_asmt_cost,
                                                     edit_asmt_reason,
                                                     edit_asmt_results,
                                                     panel_assignment_id
@@ -669,7 +694,12 @@ def run_clinical():
                                     with col_info2:
                                         st.caption(f"👤 By: {panel_row['assigned_by'] or 'Unknown'}")
                                     with col_info3:
-                                        st.caption(f"💵 Cost: ${panel_row['actual_cost'] or 0:.2f}")
+                                        # Calculate cost dynamically from panel definition
+                                        panel_cost = get_panel_cost_breakdown(panel_row['panel_id'])
+                                        cost_display = f"${panel_cost['total_cost']:.2f}"
+                                        if not panel_cost['is_complete']:
+                                            cost_display += " ⚠️"
+                                        st.caption(f"💵 Cost: {cost_display}")
 
                                     if panel_row['assignment_reason']:
                                         st.info(f"📝 **Reason:** {panel_row['assignment_reason']}")

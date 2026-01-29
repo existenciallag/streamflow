@@ -258,7 +258,7 @@ def run_settings():
     # =============================================================================
     with tab3:
         st.markdown("### Diagnostic Algorithms Management")
-        st.caption("Create and manage clinical interpretation pathways")
+        st.caption("Create and manage clinical decision trees for diagnostic pathways")
 
         # Display existing algorithms
         algorithms = query_panels("""
@@ -267,11 +267,14 @@ def run_settings():
                 da.name,
                 da.rule_logic,
                 da.description,
+                da.starting_panel_id,
                 pa.name as clinical_area,
+                p.name as starting_panel_name,
                 da.created_by,
                 da.created_at
             FROM diagnostic_algorithms da
             LEFT JOIN panel_areas pa ON pa.id = da.clinical_area_id
+            LEFT JOIN panels p ON p.id = da.starting_panel_id
             ORDER BY da.name
         """)
 
@@ -279,15 +282,158 @@ def run_settings():
             st.markdown("#### Current Algorithms")
 
             for idx, alg in algorithms.iterrows():
-                with st.expander(f"{alg['name']} - {alg['clinical_area'] or 'General'}"):
+                with st.expander(f"🌳 {alg['name']} - {alg['clinical_area'] or 'General'}"):
+                    # Show starting panel
+                    if alg['starting_panel_name']:
+                        st.markdown(f"**Starting Panel:** {alg['starting_panel_name']}")
+                    else:
+                        st.warning("⚠️ No starting panel defined")
+
                     st.markdown(f"**Logic:** `{alg['rule_logic']}`")
                     if alg['description']:
                         st.markdown(f"**Description:** {alg['description']}")
                     st.caption(f"Created by {alg['created_by']} on {alg['created_at'][:10]}")
 
+                    st.markdown("---")
+
+                    # Display decision tree nodes
+                    st.markdown("**Decision Tree Nodes:**")
+                    nodes = query_panels("""
+                        SELECT
+                            an.id,
+                            an.node_name,
+                            an.condition_logic,
+                            an.condition_type,
+                            an.parent_node_id,
+                            an.node_order,
+                            an.description,
+                            p.name as suggested_panel_name
+                        FROM algorithm_nodes an
+                        LEFT JOIN panels p ON p.id = an.suggested_panel_id
+                        WHERE an.algorithm_id = ?
+                        ORDER BY an.node_order, an.node_name
+                    """, (alg['id'],))
+
+                    if nodes is not None and not nodes.empty:
+                        for _, node in nodes.iterrows():
+                            node_display = f"**{node['node_name']}**"
+                            if node['condition_logic']:
+                                node_display += f" - IF `{node['condition_logic']}`"
+                            if node['suggested_panel_name']:
+                                node_display += f" → THEN suggest: **{node['suggested_panel_name']}**"
+
+                            # Show parent relationship
+                            parent_label = ""
+                            if node['parent_node_id']:
+                                parent = nodes[nodes['id'] == node['parent_node_id']]
+                                if not parent.empty:
+                                    parent_label = f" (after {parent.iloc[0]['node_name']})"
+
+                            st.markdown(f"  {node['node_order']}. {node_display}{parent_label}")
+                            if node['description']:
+                                st.caption(f"     ℹ️ {node['description']}")
+                    else:
+                        st.info("No decision nodes defined - add nodes below")
+
+                    # Manage Nodes button
+                    st.markdown("---")
+                    manage_nodes_key = f"manage_nodes_{alg['id']}"
+                    if st.button(f"Manage Decision Nodes", key=f"btn_{manage_nodes_key}", use_container_width=True):
+                        st.session_state[manage_nodes_key] = True
+
+                    # Node management section
+                    if st.session_state.get(manage_nodes_key, False):
+                        st.markdown("#### Add New Decision Node")
+                        with st.form(f"add_node_{alg['id']}"):
+                            col_n1, col_n2 = st.columns(2)
+                            with col_n1:
+                                new_node_name = st.text_input("Node Name *", placeholder="e.g., CD5 Check")
+                                new_node_order = st.number_input("Order", min_value=1, value=1, help="Sequence in decision tree")
+                            with col_n2:
+                                # Parent node selection
+                                parent_options = ["(Root - No Parent)"]
+                                parent_ids = [None]
+                                if nodes is not None and not nodes.empty:
+                                    parent_options += list(nodes['node_name'])
+                                    parent_ids += list(nodes['id'])
+
+                                new_parent = st.selectbox("Parent Node", parent_options)
+                                new_parent_id = parent_ids[parent_options.index(new_parent)]
+
+                                # Condition type
+                                new_cond_type = st.selectbox("Condition Type",
+                                                            ["boolean", "expression", "range", "custom"],
+                                                            help="Type of logical condition")
+
+                            new_condition = st.text_input("Condition Logic",
+                                                         placeholder="e.g., CD5+ AND clonal",
+                                                         help="Logical expression to evaluate")
+
+                            # Suggested panel selection
+                            all_panels = query_panels("SELECT id, name, version FROM panels WHERE status IN ('validated', 'active') ORDER BY name")
+                            if all_panels is not None and not all_panels.empty:
+                                panel_options = ["(None - No Panel Suggestion)"] + [f"{p['name']} (v{p['version']})" for _, p in all_panels.iterrows()]
+                                panel_ids = [None] + list(all_panels['id'])
+
+                                new_suggested_panel = st.selectbox("Suggested Panel (when condition is TRUE)", panel_options)
+                                new_suggested_panel_id = panel_ids[panel_options.index(new_suggested_panel)]
+                            else:
+                                st.warning("No panels available")
+                                new_suggested_panel_id = None
+
+                            new_node_desc = st.text_area("Description",
+                                                        placeholder="Explain when this node should trigger...",
+                                                        height=60)
+
+                            col_btn1, col_btn2 = st.columns(2)
+                            with col_btn1:
+                                if st.form_submit_button("Add Node", use_container_width=True):
+                                    if not new_node_name:
+                                        st.error("Node name is required")
+                                    else:
+                                        try:
+                                            node_id = str(uuid.uuid4())
+                                            query_panels("""
+                                                INSERT INTO algorithm_nodes (
+                                                    id, algorithm_id, node_name, condition_logic,
+                                                    condition_type, suggested_panel_id, parent_node_id,
+                                                    node_order, description
+                                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            """, (
+                                                node_id, alg['id'], new_node_name, new_condition or None,
+                                                new_cond_type, new_suggested_panel_id, new_parent_id,
+                                                new_node_order, new_node_desc or None
+                                            ), commit=True)
+
+                                            st.success(f"Node '{new_node_name}' added")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error: {e}")
+                            with col_btn2:
+                                if st.form_submit_button("Close", use_container_width=True):
+                                    st.session_state[manage_nodes_key] = False
+                                    st.rerun()
+
+                        # Delete nodes
+                        if nodes is not None and not nodes.empty:
+                            st.markdown("---")
+                            st.markdown("#### Delete Node")
+                            node_to_delete = st.selectbox("Select node to delete",
+                                                         list(nodes['node_name']),
+                                                         key=f"del_node_{alg['id']}")
+                            if st.button("Delete Selected Node", key=f"btn_del_node_{alg['id']}", type="secondary"):
+                                try:
+                                    node_id = nodes[nodes['node_name'] == node_to_delete].iloc[0]['id']
+                                    query_panels("DELETE FROM algorithm_nodes WHERE id = ?", (node_id,), commit=True)
+                                    st.success(f"Node '{node_to_delete}' deleted")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+
                     # Edit button
+                    st.markdown("---")
                     edit_key = f"edit_algo_{alg['id']}"
-                    if st.button(f"Edit '{alg['name']}'", key=f"btn_{edit_key}"):
+                    if st.button(f"Edit Algorithm Info", key=f"btn_{edit_key}", use_container_width=True):
                         st.session_state[edit_key] = True
 
                     if st.session_state.get(edit_key, False):
@@ -297,12 +443,36 @@ def run_settings():
                                                            help="e.g., LST → CD5+ → B2 and B3")
                             edit_algo_description = st.text_area("Description", value=alg['description'] or "")
 
-                            # Get areas for dropdown
-                            areas = get_all_areas()
-                            area_options = ["(None)"] + list(areas['name']) if areas is not None and not areas.empty else ["(None)"]
-                            current_area_idx = area_options.index(alg['clinical_area']) if alg['clinical_area'] in area_options else 0
+                            col_e1, col_e2 = st.columns(2)
+                            with col_e1:
+                                # Get areas for dropdown
+                                areas = get_all_areas()
+                                area_options = ["(None)"] + list(areas['name']) if areas is not None and not areas.empty else ["(None)"]
+                                current_area_idx = area_options.index(alg['clinical_area']) if alg['clinical_area'] in area_options else 0
 
-                            edit_algo_area = st.selectbox("Clinical Area", area_options, index=current_area_idx)
+                                edit_algo_area = st.selectbox("Clinical Area", area_options, index=current_area_idx)
+
+                            with col_e2:
+                                # Starting panel selection
+                                all_panels = query_panels("SELECT id, name, version FROM panels WHERE status IN ('validated', 'active') ORDER BY name")
+                                if all_panels is not None and not all_panels.empty:
+                                    panel_options = ["(None)"] + [f"{p['name']} (v{p['version']})" for _, p in all_panels.iterrows()]
+                                    panel_ids = [None] + list(all_panels['id'])
+
+                                    # Find current starting panel index
+                                    current_panel_idx = 0
+                                    if alg['starting_panel_id']:
+                                        try:
+                                            current_panel_idx = panel_ids.index(alg['starting_panel_id'])
+                                        except ValueError:
+                                            current_panel_idx = 0
+
+                                    edit_starting_panel = st.selectbox("Starting Panel", panel_options, index=current_panel_idx,
+                                                                       help="First panel to execute in this algorithm")
+                                    edit_starting_panel_id = panel_ids[panel_options.index(edit_starting_panel)]
+                                else:
+                                    st.warning("No panels available")
+                                    edit_starting_panel_id = None
 
                             col_btn1, col_btn2 = st.columns(2)
                             with col_btn1:
@@ -317,10 +487,10 @@ def run_settings():
 
                                         query_panels("""
                                             UPDATE diagnostic_algorithms
-                                            SET name = ?, rule_logic = ?, description = ?, clinical_area_id = ?, updated_at = ?
+                                            SET name = ?, rule_logic = ?, description = ?, clinical_area_id = ?, starting_panel_id = ?, updated_at = ?
                                             WHERE id = ?
                                         """, (edit_algo_name, edit_algo_logic, edit_algo_description, area_id,
-                                             datetime.now().isoformat(), alg['id']), commit=True)
+                                             edit_starting_panel_id, datetime.now().isoformat(), alg['id']), commit=True)
 
                                         st.success(f"Algorithm '{edit_algo_name}' updated")
                                         st.session_state[edit_key] = False
@@ -356,14 +526,30 @@ def run_settings():
                                                placeholder="Explain when and how to use this algorithm...",
                                                height=100)
 
-            # Area selection
-            areas = get_all_areas()
-            if areas is not None and not areas.empty:
-                area_options = ["(None)"] + list(areas['name'])
-                new_algo_area = st.selectbox("Clinical Area", area_options)
-            else:
-                st.warning("No clinical areas available")
-                new_algo_area = "(None)"
+            col_new1, col_new2 = st.columns(2)
+            with col_new1:
+                # Area selection
+                areas = get_all_areas()
+                if areas is not None and not areas.empty:
+                    area_options = ["(None)"] + list(areas['name'])
+                    new_algo_area = st.selectbox("Clinical Area", area_options)
+                else:
+                    st.warning("No clinical areas available")
+                    new_algo_area = "(None)"
+
+            with col_new2:
+                # Starting panel selection
+                all_panels = query_panels("SELECT id, name, version FROM panels WHERE status IN ('validated', 'active') ORDER BY name")
+                if all_panels is not None and not all_panels.empty:
+                    panel_options = ["(None)"] + [f"{p['name']} (v{p['version']})" for _, p in all_panels.iterrows()]
+                    panel_ids = [None] + list(all_panels['id'])
+
+                    new_starting_panel = st.selectbox("Starting Panel", panel_options,
+                                                      help="First panel to execute in this algorithm")
+                    new_starting_panel_id = panel_ids[panel_options.index(new_starting_panel)]
+                else:
+                    st.warning("No panels available")
+                    new_starting_panel_id = None
 
             new_algo_created_by = st.text_input("Created By *", placeholder="Your name")
 
@@ -382,12 +568,13 @@ def run_settings():
                         algo_id = str(uuid.uuid4())
                         query_panels("""
                             INSERT INTO diagnostic_algorithms (
-                                id, name, rule_logic, description, clinical_area_id, created_by, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                                id, name, rule_logic, description, clinical_area_id, starting_panel_id, created_by, created_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """, (algo_id, new_algo_name, new_algo_logic, new_algo_description, area_id,
-                             new_algo_created_by, datetime.now().isoformat()), commit=True)
+                             new_starting_panel_id, new_algo_created_by, datetime.now().isoformat()), commit=True)
 
                         st.success(f"Algorithm '{new_algo_name}' created successfully")
+                        st.info("💡 Next: Add decision nodes to build your diagnostic pathway")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error creating algorithm: {e}")
