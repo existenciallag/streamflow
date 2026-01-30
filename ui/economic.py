@@ -366,14 +366,14 @@ def run_economic():
                     selected_area_idx = area_options.index(selected_area_name)
                     selected_area_id = area_ids[selected_area_idx]
 
-                    # Get panels for this area
+                    # Get all active/validated panels (classification optional)
+                    # The area selection is used for tracking purposes, not filtering
                     panels_in_area = query_panels("""
                         SELECT DISTINCT p.id, p.name, p.version
                         FROM panels p
-                        JOIN panel_classifications pc ON pc.panel_id = p.id
-                        WHERE pc.area_id = ? AND p.status IN ('validated', 'active')
+                        WHERE p.status IN ('validated', 'active')
                         ORDER BY p.name
-                    """, (selected_area_id,))
+                    """)
 
                     if panels_in_area is None or panels_in_area.empty:
                         st.warning(t['no_panels_available'].format(area=selected_area_name))
