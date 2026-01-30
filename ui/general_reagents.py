@@ -154,6 +154,18 @@ def run_general_reagents_crud():
                     price = st.number_input("Precio referencia ($)", 0.0, step=10.0)
 
                 st.markdown("")  # Spacing
+                st.markdown("**Volumen/Unidades estándar**")
+                st.caption("Define el volumen o cantidad estándar por unidad (ej: 500mL para buffers, 100 unidades para tubos)")
+
+                col_v1, col_v2 = st.columns(2)
+                with col_v1:
+                    standard_volume = st.number_input("Volumen estándar (mL)", 0.0, step=10.0,
+                                                     help="Para líquidos: volumen por botella/unidad")
+                with col_v2:
+                    standard_units = st.number_input("Unidades estándar por paquete", 0.0, step=1.0,
+                                                    help="Para items discretos: cantidad por caja/paquete")
+
+                st.markdown("")  # Spacing
                 notes = st.text_area("Notas", placeholder="Notas adicionales sobre este reactivo")
 
                 st.markdown("")  # Spacing
@@ -168,6 +180,8 @@ def run_general_reagents_crud():
                             "concentration": concentration,
                             "brand_id": brand_id,
                             "price": price,
+                            "standard_volume": standard_volume if standard_volume > 0 else None,
+                            "standard_units": standard_units if standard_units > 0 else None,
                             "notes": notes,
                             "created_at": pd.Timestamp.now().isoformat()
                         })
@@ -221,6 +235,15 @@ def run_general_reagents_crud():
                         step=10.0
                     )
 
+                st.markdown("**Volumen/Unidades estándar**")
+                col_v1, col_v2 = st.columns(2)
+                with col_v1:
+                    standard_volume = st.number_input("Volumen estándar (mL)", value=float(r.get("standard_volume") or 0), step=10.0,
+                                                     help="Para líquidos: volumen por botella/unidad")
+                with col_v2:
+                    standard_units = st.number_input("Unidades estándar por paquete", value=float(r.get("standard_units") or 0), step=1.0,
+                                                    help="Para items discretos: cantidad por caja/paquete")
+
                 notes = st.text_area("Notas", r["notes"] or "")
 
                 st.markdown("")  # Spacing
@@ -232,6 +255,8 @@ def run_general_reagents_crud():
                         "concentration": concentration,
                         "brand_id": brand_id,
                         "price": price,
+                        "standard_volume": standard_volume if standard_volume > 0 else None,
+                        "standard_units": standard_units if standard_units > 0 else None,
                         "notes": notes
                     }, r["id"])
 

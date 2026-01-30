@@ -117,6 +117,8 @@ def get_general_reagents_with_units():
             gr.type as reagent_type,
             gr.concentration,
             gr.price,
+            gr.standard_volume,
+            gr.standard_units,
             b.name as brand,
 
             -- Count available units (not closed, not expired)
@@ -136,7 +138,7 @@ def get_general_reagents_with_units():
         FROM general_reagents gr
         LEFT JOIN brands b ON b.id = gr.brand_id
         LEFT JOIN general_reagent_units gru ON gru.general_reagent_id = gr.id
-        GROUP BY gr.id, gr.name, gr.type, gr.concentration, gr.price, b.name
+        GROUP BY gr.id, gr.name, gr.type, gr.concentration, gr.price, gr.standard_volume, gr.standard_units, b.name
         ORDER BY gr.name
     """)
 
@@ -430,7 +432,8 @@ def render_general_reagent_card(gr, key_prefix):
 
         unit_options = {}
         for _, unit in units.iterrows():
-            label = f"Lot {unit['lot_number']} - {unit['volume']:.0f} mL - Exp: {unit['expiration_date'][:10] if unit['expiration_date'] else 'N/A'}"
+            vol_display = f"{unit['volume']:.0f} mL" if unit['volume'] is not None else "N/A mL"
+            label = f"Lot {unit['lot_number']} - {vol_display} - Exp: {unit['expiration_date'][:10] if unit['expiration_date'] else 'N/A'}"
             unit_options[label] = unit['unit_id']
 
         selected_unit_label = st.selectbox(
@@ -468,21 +471,25 @@ def render_general_reagent_card(gr, key_prefix):
         # Calculate cost per test
         if gr['price'] and consumption_amount > 0:
             if consumption_type == "ml":
-                # Use unit volume for ml-based calculation
-                total_volume = selected_unit_data['volume']
+                # Use unit volume or fallback to standard volume
+                total_volume = selected_unit_data['volume'] if selected_unit_data['volume'] else gr.get('standard_volume')
                 if total_volume and total_volume > 0:
                     unit_price_per_ml = gr['price'] / total_volume
                     cost_per_test = unit_price_per_ml * consumption_amount
+                    volume_source = "unit" if selected_unit_data['volume'] else "standard"
                     st.info(f"💵 Cost per test: ${cost_per_test:.4f} (${unit_price_per_ml:.4f}/mL × {consumption_amount} mL)")
+                    if volume_source == "standard":
+                        st.caption(f"ℹ️ Using standard volume ({total_volume:.0f} mL) - unit volume not set")
                 else:
                     cost_per_test = 0.0
-                    st.warning("⚠️ Cannot calculate cost: unit volume is 0")
+                    st.warning("⚠️ Cannot calculate cost: volume is missing. Please set volume in General Reagents or on the unit.")
             else:  # units
-                # For discrete units, user must specify how many "units" are in the batch
+                # Use standard_units as default or let user override
+                default_units = gr.get('standard_units') if gr.get('standard_units') else 1.0
                 total_units_in_batch = st.number_input(
                     "Total units in this batch",
                     min_value=1.0,
-                    value=1.0,
+                    value=float(default_units),
                     help="e.g., if this is a box of 100 tubes, enter 100",
                     key=f"{key_prefix}_total_units_{gr['reagent_id']}"
                 )
@@ -504,6 +511,12 @@ def render_general_reagent_card(gr, key_prefix):
 
         # Add button
         if st.button(f"➕ Add to Panel", key=f"{key_prefix}_add_{gr['reagent_id']}", type="secondary"):
+            # Determine volume/units to store (use fallback if needed)
+            if consumption_type == "ml":
+                volume_to_store = selected_unit_data['volume'] if selected_unit_data['volume'] else gr.get('standard_volume')
+            else:
+                volume_to_store = total_units_in_batch
+
             return {
                 "general_reagent_id": gr['reagent_id'],
                 "general_reagent_name": gr['reagent_name'],
@@ -511,7 +524,7 @@ def render_general_reagent_card(gr, key_prefix):
                 "consumption_type": consumption_type,
                 "consumption_amount": consumption_amount,
                 "unit_price": gr['price'],
-                "total_volume_or_units": selected_unit_data['volume'] if consumption_type == "ml" else total_units_in_batch,
+                "total_volume_or_units": volume_to_store,
                 "cost_per_test": cost_per_test,
                 "display_name": display_name,
             }
