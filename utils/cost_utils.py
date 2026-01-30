@@ -9,8 +9,8 @@ from utils.pricing import calculate_panel_cost_current
 
 def get_panel_cost_breakdown(panel_id):
     """
-    Get complete cost breakdown for a panel
-    
+    Get complete cost breakdown for a panel (antibodies + general reagents)
+
     Returns:
         dict: {
             'total_cost': float,
@@ -19,22 +19,56 @@ def get_panel_cost_breakdown(panel_id):
             'breakdown': list of {'reagent': name, 'cost': amount}
         }
     """
+    # Get antibody costs
     result = calculate_panel_cost_current(panel_id, strategy='cheapest')
-    
+
     if 'error' in result:
-        return {
-            'total_cost': 0.0,
-            'is_complete': False,
-            'missing_prices': [],
-            'breakdown': [],
-            'error': result['error']
-        }
-    
+        antibody_cost = 0.0
+        is_complete = False
+        missing_prices = []
+        breakdown = []
+    else:
+        antibody_cost = result.get('total_cost', 0.0)
+        is_complete = result.get('is_complete', True)
+        missing_prices = result.get('missing_reagents', [])
+        breakdown = result.get('breakdown', [])
+
+    # Get general reagent costs
+    general_reagents = query_panels("""
+        SELECT
+            gr.name as reagent_name,
+            pgr.cost_per_test,
+            pgr.consumption_amount,
+            pgr.consumption_type,
+            pgr.display_name
+        FROM panel_general_reagents pgr
+        JOIN general_reagents gr ON gr.id = pgr.general_reagent_id
+        WHERE pgr.panel_id = ?
+    """, (panel_id,))
+
+    general_reagent_cost = 0.0
+    if general_reagents is not None and not general_reagents.empty:
+        for _, gr in general_reagents.iterrows():
+            gr_cost = gr['cost_per_test'] or 0.0
+            general_reagent_cost += gr_cost
+            breakdown.append({
+                'reagent': gr['display_name'] or gr['reagent_name'],
+                'cost': gr_cost,
+                'type': 'general_reagent'
+            })
+
+            # If cost is 0, mark as missing price
+            if gr_cost == 0.0:
+                is_complete = False
+                missing_prices.append(gr['display_name'] or gr['reagent_name'])
+
+    total_cost = antibody_cost + general_reagent_cost
+
     return {
-        'total_cost': result.get('total_cost', 0.0),
-        'is_complete': result.get('is_complete', True),
-        'missing_prices': result.get('missing_reagents', []),
-        'breakdown': result.get('breakdown', [])
+        'total_cost': total_cost,
+        'is_complete': is_complete,
+        'missing_prices': missing_prices,
+        'breakdown': breakdown
     }
 
 

@@ -108,6 +108,57 @@ def get_reagents_with_details():
     """)
 
 
+def get_general_reagents_with_units():
+    """Get all general reagents with their available units"""
+    return query_panels("""
+        SELECT
+            gr.id as reagent_id,
+            gr.name as reagent_name,
+            gr.type as reagent_type,
+            gr.concentration,
+            gr.price,
+            b.name as brand,
+
+            -- Count available units (not closed, not expired)
+            COUNT(DISTINCT CASE
+                WHEN LOWER(gru.status) IN ('stored', 'in use')
+                AND (gru.expiration_date IS NULL OR gru.expiration_date > datetime('now'))
+                THEN gru.id
+            END) as available_units,
+
+            -- Average volume for units
+            AVG(CASE
+                WHEN LOWER(gru.status) IN ('stored', 'in use')
+                AND (gru.expiration_date IS NULL OR gru.expiration_date > datetime('now'))
+                THEN gru.volume
+            END) as avg_volume
+
+        FROM general_reagents gr
+        LEFT JOIN brands b ON b.id = gr.brand_id
+        LEFT JOIN general_reagent_units gru ON gru.general_reagent_id = gr.id
+        GROUP BY gr.id, gr.name, gr.type, gr.concentration, gr.price, b.name
+        ORDER BY gr.name
+    """)
+
+
+def get_general_reagent_units(reagent_id):
+    """Get available units for a specific general reagent"""
+    return query_panels("""
+        SELECT
+            gru.id as unit_id,
+            gru.lot_number,
+            gru.volume,
+            gru.expiration_date,
+            gru.status,
+            gru.location
+        FROM general_reagent_units gru
+        WHERE gru.general_reagent_id = ?
+        AND LOWER(gru.status) IN ('stored', 'in use')
+        AND (gru.expiration_date IS NULL OR gru.expiration_date > datetime('now'))
+        ORDER BY gru.expiration_date ASC
+    """, (reagent_id,))
+
+
 def get_suggested_channel(cytometer_id, fluorochrome_id):
     """
     Get the suggested optical channel for a fluorochrome using ID-based matching.
@@ -328,6 +379,146 @@ def render_antibody_card(ab, cytometer_id, key_prefix, t=None):
     return None
 
 
+def render_general_reagent_card(gr, key_prefix):
+    """Render a general reagent selection card with consumption configuration"""
+    # Get translations
+    lang = st.session_state.get('language', 'en')
+    t = get_lang_dict('panel_builder', lang)
+
+    with st.expander(
+        f"**{gr['reagent_name']}** ({gr['reagent_type'] or 'General'})",
+        expanded=False
+    ):
+        # Display reagent details
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.caption("**Name**")
+            st.write(gr['reagent_name'])
+
+            st.caption("**Type**")
+            st.write(gr['reagent_type'] or "N/A")
+
+            if gr['concentration']:
+                st.caption("**Concentration**")
+                st.write(gr['concentration'])
+
+        with col2:
+            st.caption("**Brand**")
+            st.write(gr['brand'] or "N/A")
+
+            st.caption("**Price**")
+            if gr['price']:
+                st.write(f"${gr['price']:.2f}")
+            else:
+                st.write("N/A")
+
+            st.caption("**Available Units**")
+            if gr['available_units'] and gr['available_units'] > 0:
+                st.write(f"✓ {int(gr['available_units'])} units")
+            else:
+                st.error("⚠️ No stock available")
+
+        # Select specific unit/batch
+        st.markdown("---")
+        st.caption("**Select Unit/Batch**")
+
+        units = get_general_reagent_units(gr['reagent_id'])
+        if units.empty:
+            st.error("No available units for this reagent")
+            return None
+
+        unit_options = {}
+        for _, unit in units.iterrows():
+            label = f"Lot {unit['lot_number']} - {unit['volume']:.0f} mL - Exp: {unit['expiration_date'][:10] if unit['expiration_date'] else 'N/A'}"
+            unit_options[label] = unit['unit_id']
+
+        selected_unit_label = st.selectbox(
+            "Unit/Batch",
+            options=list(unit_options.keys()),
+            key=f"{key_prefix}_unit_{gr['reagent_id']}"
+        )
+        selected_unit_id = unit_options[selected_unit_label]
+        selected_unit_data = units[units['unit_id'] == selected_unit_id].iloc[0]
+
+        # Consumption configuration
+        st.markdown("---")
+        st.caption("**Consumption Configuration**")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            consumption_type = st.selectbox(
+                "Consumption Type",
+                options=["ml", "units"],
+                help="ml for liquids (buffers, solutions), units for discrete items (tubes, filters)",
+                key=f"{key_prefix}_type_{gr['reagent_id']}"
+            )
+
+        with col2:
+            consumption_amount = st.number_input(
+                f"Amount ({consumption_type})",
+                min_value=0.0,
+                max_value=1000.0,
+                value=1.0 if consumption_type == "ml" else 1.0,
+                step=0.1 if consumption_type == "ml" else 1.0,
+                key=f"{key_prefix}_amount_{gr['reagent_id']}"
+            )
+
+        # Calculate cost per test
+        if gr['price'] and consumption_amount > 0:
+            if consumption_type == "ml":
+                # Use unit volume for ml-based calculation
+                total_volume = selected_unit_data['volume']
+                if total_volume and total_volume > 0:
+                    unit_price_per_ml = gr['price'] / total_volume
+                    cost_per_test = unit_price_per_ml * consumption_amount
+                    st.info(f"💵 Cost per test: ${cost_per_test:.4f} (${unit_price_per_ml:.4f}/mL × {consumption_amount} mL)")
+                else:
+                    cost_per_test = 0.0
+                    st.warning("⚠️ Cannot calculate cost: unit volume is 0")
+            else:  # units
+                # For discrete units, user must specify how many "units" are in the batch
+                total_units_in_batch = st.number_input(
+                    "Total units in this batch",
+                    min_value=1.0,
+                    value=1.0,
+                    help="e.g., if this is a box of 100 tubes, enter 100",
+                    key=f"{key_prefix}_total_units_{gr['reagent_id']}"
+                )
+                unit_price_per_unit = gr['price'] / total_units_in_batch
+                cost_per_test = unit_price_per_unit * consumption_amount
+                st.info(f"💵 Cost per test: ${cost_per_test:.4f} (${unit_price_per_unit:.4f}/unit × {consumption_amount} units)")
+        else:
+            cost_per_test = 0.0
+            total_units_in_batch = None
+            st.caption("No cost information available")
+
+        # Display name
+        default_display = f"{gr['reagent_name']} ({consumption_amount} {consumption_type})"
+        display_name = st.text_input(
+            "Display Name",
+            value=default_display,
+            key=f"{key_prefix}_display_{gr['reagent_id']}"
+        )
+
+        # Add button
+        if st.button(f"➕ Add to Panel", key=f"{key_prefix}_add_{gr['reagent_id']}", type="secondary"):
+            return {
+                "general_reagent_id": gr['reagent_id'],
+                "general_reagent_name": gr['reagent_name'],
+                "general_reagent_unit_id": selected_unit_id,
+                "consumption_type": consumption_type,
+                "consumption_amount": consumption_amount,
+                "unit_price": gr['price'],
+                "total_volume_or_units": selected_unit_data['volume'] if consumption_type == "ml" else total_units_in_batch,
+                "cost_per_test": cost_per_test,
+                "display_name": display_name,
+            }
+
+    return None
+
+
 def render_panel_composition(panel_reagents, panel_general_reagents):
     """Render the right-side panel composition view"""
     # Get translations
@@ -401,8 +592,35 @@ def render_panel_composition(panel_reagents, panel_general_reagents):
     # General reagents
     if panel_general_reagents:
         st.markdown(f"#### {t['general_reagents_header']}")
-        for gr in panel_general_reagents:
-            st.text(f"• {gr['display_name']}: {gr.get('volume_per_test', 'N/A')} µL - ${gr.get('cost_per_test', 0):.2f}")
+
+        gr_df_data = []
+        for i, gr in enumerate(panel_general_reagents):
+            gr_df_data.append({
+                "Reagent": gr['display_name'],
+                "Amount": f"{gr['consumption_amount']:.2f} {gr['consumption_type']}",
+                "Cost": f"${gr['cost_per_test']:.4f}",
+                "idx": i
+            })
+
+        gr_df = pd.DataFrame(gr_df_data)
+
+        # Display table with selection for deletion
+        sel_gr = st.dataframe(
+            gr_df[["Reagent", "Amount", "Cost"]],
+            use_container_width=True,
+            selection_mode="multi-row",
+            on_select="rerun",
+            height=min(300, 35 + len(gr_df) * 35)
+        )
+
+        # Delete button for general reagents
+        if sel_gr and sel_gr.get("selection", {}).get("rows"):
+            if st.button("🗑️ Remove Selected General Reagents", type="secondary"):
+                # Remove selected indices (in reverse to avoid index issues)
+                for idx in sorted(sel_gr["selection"]["rows"], reverse=True):
+                    actual_idx = gr_df.iloc[idx]["idx"]
+                    del panel_general_reagents[int(actual_idx)]
+                st.rerun()
 
 
 def load_existing_panel_for_editing(panel_id):
@@ -440,18 +658,42 @@ def load_existing_panel_for_editing(panel_id):
     # Convert to list of dicts
     reagents_list = panel_reagents.to_dict('records') if not panel_reagents.empty else []
 
+    # Load panel general reagents
+    panel_general_reagents = query_panels("""
+        SELECT
+            pgr.general_reagent_id,
+            gr.name as general_reagent_name,
+            pgr.general_reagent_unit_id,
+            pgr.consumption_type,
+            pgr.consumption_amount,
+            pgr.unit_price,
+            pgr.total_volume_or_units,
+            pgr.cost_per_test,
+            pgr.display_name
+        FROM panel_general_reagents pgr
+        JOIN general_reagents gr ON gr.id = pgr.general_reagent_id
+        WHERE pgr.panel_id = ?
+    """, (panel_id,))
+
+    # Convert to list of dicts
+    general_reagents_list = panel_general_reagents.to_dict('records') if not panel_general_reagents.empty else []
+
     return {
         "panel": panel_data,
-        "reagents": reagents_list
+        "reagents": reagents_list,
+        "general_reagents": general_reagents_list
     }
 
 
-def save_panel_updates(panel_id, panel_reagents, sample_type=None, sample_volume=None,
+def save_panel_updates(panel_id, panel_reagents, panel_general_reagents=None, sample_type=None, sample_volume=None,
                       washed_sample=None, description=None, clinical_indication=None):
     """Update an existing panel's reagents and metadata"""
     try:
         # Delete existing panel reagents
         query_panels("DELETE FROM panel_reagents WHERE panel_id = ?", (panel_id,), commit=True)
+
+        # Delete existing panel general reagents
+        query_panels("DELETE FROM panel_general_reagents WHERE panel_id = ?", (panel_id,), commit=True)
 
         # Insert updated reagents
         now = datetime.utcnow().isoformat()
@@ -479,6 +721,31 @@ def save_panel_updates(panel_id, panel_reagents, sample_type=None, sample_volume
                 now,
                 "system"
             ), commit=True)
+
+        # Insert updated general reagents
+        if panel_general_reagents:
+            for gr in panel_general_reagents:
+                query_panels("""
+                    INSERT INTO panel_general_reagents (
+                        id, panel_id, general_reagent_id, general_reagent_unit_id,
+                        consumption_type, consumption_amount,
+                        unit_price, total_volume_or_units, cost_per_test,
+                        display_name, assigned_at, added_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    str(uuid.uuid4()),
+                    panel_id,
+                    gr["general_reagent_id"],
+                    gr.get("general_reagent_unit_id"),
+                    gr["consumption_type"],
+                    gr["consumption_amount"],
+                    gr.get("unit_price"),
+                    gr.get("total_volume_or_units"),
+                    gr.get("cost_per_test", 0.0),
+                    gr["display_name"],
+                    now,
+                    "system"
+                ), commit=True)
 
         # Update panel metadata
         update_fields = ["updated_at = ?"]
@@ -546,6 +813,7 @@ def create_panel():
         panel_data = load_existing_panel_for_editing(st.session_state["editing_panel_id"])
         if panel_data:
             st.session_state["panel_draft_reagents"] = panel_data["reagents"]
+            st.session_state["panel_draft_general_reagents"] = panel_data.get("general_reagents", [])
             st.info(f"✏️ {t['editing_mode_info']} {panel_data['panel']['name']}")
 
     # ============================================================
@@ -730,52 +998,100 @@ def create_panel():
     left_col, right_col = st.columns([1, 1])
 
     # ============================================================
-    # LEFT PANEL: ANTIBODY SELECTION
+    # LEFT PANEL: REAGENT SELECTION (Antibodies + General Reagents)
     # ============================================================
     with left_col:
-        st.markdown(f"### 🔍 {t['antibody_selection_header']}")
+        st.markdown(f"### 🔍 Reagent Selection")
 
-        # Search only (removed surface/intracellular filter)
-        search_query = st.text_input(
-            t['search_label'],
-            placeholder=t['search_placeholder'],
-            key="ab_search"
-        )
+        # Tabs for Antibodies and General Reagents
+        tab1, tab2 = st.tabs(["🧬 Antibodies", "🧪 General Reagents"])
 
-        # Load reagents
-        reagents_df = get_reagents_with_details()
+        # ============================================================
+        # TAB 1: ANTIBODY SELECTION
+        # ============================================================
+        with tab1:
+            # Search only (removed surface/intracellular filter)
+            search_query = st.text_input(
+                t['search_label'],
+                placeholder=t['search_placeholder'],
+                key="ab_search"
+            )
 
-        if reagents_df.empty:
-            st.warning(t['no_reagents_warning'])
-        else:
-            # Apply search filter
-            if search_query:
-                mask = (
-                    reagents_df["reagent_name"].str.contains(search_query, case=False, na=False) |
-                    reagents_df["target_antigen"].str.contains(search_query, case=False, na=False) |
-                    reagents_df["clone"].str.contains(search_query, case=False, na=False) |
-                    reagents_df["fluorochrome"].str.contains(search_query, case=False, na=False)
-                )
-                reagents_df = reagents_df[mask]
+            # Load reagents
+            reagents_df = get_reagents_with_details()
 
-            # Show count
-            st.caption(t['showing_count'].format(count=len(reagents_df)))
+            if reagents_df.empty:
+                st.warning(t['no_reagents_warning'])
+            else:
+                # Apply search filter
+                if search_query:
+                    mask = (
+                        reagents_df["reagent_name"].str.contains(search_query, case=False, na=False) |
+                        reagents_df["target_antigen"].str.contains(search_query, case=False, na=False) |
+                        reagents_df["clone"].str.contains(search_query, case=False, na=False) |
+                        reagents_df["fluorochrome"].str.contains(search_query, case=False, na=False)
+                    )
+                    reagents_df = reagents_df[mask]
 
-            # Render antibody cards (limit to 20 for performance)
-            for _, ab in reagents_df.head(20).iterrows():
-                result = render_antibody_card(ab, cytometer_id, key_prefix="builder", t=t)
-                if result:
-                    # Check for duplicate channel
-                    existing_channels = [r['optical_channel_id'] for r in st.session_state["panel_draft_reagents"]]
-                    if result['optical_channel_id'] in existing_channels:
-                        st.warning(t['channel_in_use_warning'].format(name=result['channel_display_name']))
+                # Show count
+                st.caption(t['showing_count'].format(count=len(reagents_df)))
 
-                    st.session_state["panel_draft_reagents"].append(result)
-                    st.success(f"✓ {t['added_success'].format(name=result['display_name'])}")
-                    st.rerun()
+                # Render antibody cards (limit to 20 for performance)
+                for _, ab in reagents_df.head(20).iterrows():
+                    result = render_antibody_card(ab, cytometer_id, key_prefix="builder", t=t)
+                    if result:
+                        # Check for duplicate channel
+                        existing_channels = [r['optical_channel_id'] for r in st.session_state["panel_draft_reagents"]]
+                        if result['optical_channel_id'] in existing_channels:
+                            st.warning(t['channel_in_use_warning'].format(name=result['channel_display_name']))
 
-            if len(reagents_df) > 20:
-                st.info(t['showing_first_20'].format(count=len(reagents_df)))
+                        st.session_state["panel_draft_reagents"].append(result)
+                        st.success(f"✓ {t['added_success'].format(name=result['display_name'])}")
+                        st.rerun()
+
+                if len(reagents_df) > 20:
+                    st.info(t['showing_first_20'].format(count=len(reagents_df)))
+
+        # ============================================================
+        # TAB 2: GENERAL REAGENTS SELECTION
+        # ============================================================
+        with tab2:
+            st.caption("Add buffers, solutions, and consumables used in this panel")
+
+            # Search for general reagents
+            gr_search_query = st.text_input(
+                "Search",
+                placeholder="PBS, lysing buffer, tubes...",
+                key="gr_search"
+            )
+
+            # Load general reagents
+            general_reagents_df = get_general_reagents_with_units()
+
+            if general_reagents_df.empty:
+                st.warning("No general reagents available. Add them in the General Reagents section first.")
+            else:
+                # Apply search filter
+                if gr_search_query:
+                    mask = (
+                        general_reagents_df["reagent_name"].str.contains(gr_search_query, case=False, na=False) |
+                        general_reagents_df["reagent_type"].str.contains(gr_search_query, case=False, na=False)
+                    )
+                    general_reagents_df = general_reagents_df[mask]
+
+                # Show count
+                st.caption(f"Showing {len(general_reagents_df)} general reagents")
+
+                # Render general reagent cards (limit to 20 for performance)
+                for _, gr in general_reagents_df.head(20).iterrows():
+                    result = render_general_reagent_card(gr, key_prefix="builder_gr")
+                    if result:
+                        st.session_state["panel_draft_general_reagents"].append(result)
+                        st.success(f"✓ Added {result['display_name']}")
+                        st.rerun()
+
+                if len(general_reagents_df) > 20:
+                    st.info(f"Showing first 20 of {len(general_reagents_df)} reagents. Use search to narrow down.")
 
     # ============================================================
     # RIGHT PANEL: PANEL COMPOSITION
@@ -842,6 +1158,7 @@ def create_panel():
                 if save_panel_updates(
                     panel_id,
                     st.session_state["panel_draft_reagents"],
+                    panel_general_reagents=st.session_state["panel_draft_general_reagents"],
                     sample_type=sample_type,
                     sample_volume=sample_volume,
                     washed_sample=washed_sample,
@@ -868,8 +1185,10 @@ def create_panel():
                 panel_id = str(uuid.uuid4())
                 now = datetime.utcnow().isoformat()
 
-                # Calculate total cost
+                # Calculate total cost (antibodies + general reagents)
                 total_cost = calculate_panel_cost(st.session_state["panel_draft_reagents"])
+                for gr in st.session_state["panel_draft_general_reagents"]:
+                    total_cost += gr.get("cost_per_test", 0.0)
 
                 # Insert panel using EXISTING columns (not FK references)
                 query_panels("""
@@ -929,6 +1248,30 @@ def create_panel():
                         reagent["is_surface"],
                         reagent["staining_step"],
                         reagent["display_name"],
+                        now,
+                        "system"
+                    ), commit=True)
+
+                # Insert panel general reagents
+                for gr in st.session_state["panel_draft_general_reagents"]:
+                    query_panels("""
+                        INSERT INTO panel_general_reagents (
+                            id, panel_id, general_reagent_id, general_reagent_unit_id,
+                            consumption_type, consumption_amount,
+                            unit_price, total_volume_or_units, cost_per_test,
+                            display_name, assigned_at, added_by
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        str(uuid.uuid4()),
+                        panel_id,
+                        gr["general_reagent_id"],
+                        gr.get("general_reagent_unit_id"),
+                        gr["consumption_type"],
+                        gr["consumption_amount"],
+                        gr.get("unit_price"),
+                        gr.get("total_volume_or_units"),
+                        gr.get("cost_per_test", 0.0),
+                        gr["display_name"],
                         now,
                         "system"
                     ), commit=True)
