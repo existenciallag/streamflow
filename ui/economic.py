@@ -148,14 +148,14 @@ def run_economic():
         st.markdown(f"### 🔬 {t.get('cost_by_disease_category', 'Cost Breakdown by Disease Category')}")
         disease_costs = query_panels("""
             SELECT
-                COALESCE(pd.name, 'Unclassified') as disease_name,
+                COALESCE(pdc.name, 'Unclassified') as disease_name,
                 SUM(pul.total_cost) as total_cost,
                 COUNT(pul.id) as test_count
             FROM panel_usage_log pul
-            LEFT JOIN panel_classifications pc ON pc.panel_id = pul.panel_id
-            LEFT JOIN panel_diseases pd ON pd.id = pc.disease_id
+            LEFT JOIN panel_classifications pc ON pc.panel_id = pul.panel_id AND pc.is_primary = 1
+            LEFT JOIN panel_disease_categories pdc ON pdc.id = pc.disease_category_id
             WHERE pul.execution_date BETWEEN ? AND ?
-            GROUP BY pd.name
+            GROUP BY pdc.name
             ORDER BY total_cost DESC
         """, (str(start_date), str(end_date)))
 
