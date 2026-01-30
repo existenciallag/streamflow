@@ -144,7 +144,166 @@ def run_economic():
 
         st.markdown("---")
 
-        # Top consumed reagents
+        # Cost breakdown by disease category
+        st.markdown(f"### 🔬 {t.get('cost_by_disease_category', 'Cost Breakdown by Disease Category')}")
+        disease_costs = query_panels("""
+            SELECT
+                COALESCE(pd.name, 'Unclassified') as disease_name,
+                SUM(pul.total_cost) as total_cost,
+                COUNT(pul.id) as test_count
+            FROM panel_usage_log pul
+            LEFT JOIN panel_classifications pc ON pc.panel_id = pul.panel_id
+            LEFT JOIN panel_diseases pd ON pd.id = pc.disease_id
+            WHERE pul.execution_date BETWEEN ? AND ?
+            GROUP BY pd.name
+            ORDER BY total_cost DESC
+        """, (str(start_date), str(end_date)))
+
+        if disease_costs is not None and not disease_costs.empty:
+            col_d1, col_d2 = st.columns(2)
+
+            with col_d1:
+                # Pie chart for disease distribution
+                fig = px.pie(
+                    disease_costs,
+                    values='total_cost',
+                    names='disease_name',
+                    title=t.get('disease_cost_distribution', 'Cost Distribution by Disease')
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col_d2:
+                # Table with details
+                st.dataframe(
+                    disease_costs.rename(columns={
+                        'disease_name': t.get('disease_column', 'Disease'),
+                        'total_cost': t.get('total_cost_column', 'Total Cost'),
+                        'test_count': t.get('tests_column', 'Tests')
+                    }),
+                    use_container_width=True,
+                    hide_index=True
+                )
+        else:
+            st.info(t.get('no_disease_data', 'No disease category data available'))
+
+        st.markdown("---")
+
+        # Antibody vs General Reagent cost breakdown
+        st.markdown(f"### 💊 {t.get('reagent_type_breakdown', 'Antibody vs General Reagent Costs')}")
+
+        # Get all panels used in the period
+        panels_in_period = query_panels("""
+            SELECT DISTINCT pul.panel_id
+            FROM panel_usage_log pul
+            WHERE pul.execution_date BETWEEN ? AND ?
+        """, (str(start_date), str(end_date)))
+
+        if panels_in_period is not None and not panels_in_period.empty:
+            antibody_total = 0.0
+            general_reagent_total = 0.0
+
+            for _, row in panels_in_period.iterrows():
+                from utils.cost_utils import get_panel_cost_breakdown
+                breakdown = get_panel_cost_breakdown(row['panel_id'])
+
+                for item in breakdown.get('breakdown', []):
+                    if item.get('type') == 'general_reagent':
+                        general_reagent_total += item['cost']
+                    else:
+                        antibody_total += item['cost']
+
+            if antibody_total > 0 or general_reagent_total > 0:
+                col_r1, col_r2 = st.columns(2)
+
+                with col_r1:
+                    # Pie chart
+                    reagent_type_data = pd.DataFrame({
+                        'Type': [
+                            t.get('antibodies_label', 'Antibodies'),
+                            t.get('general_reagents_label', 'General Reagents')
+                        ],
+                        'Cost': [antibody_total, general_reagent_total]
+                    })
+
+                    fig = px.pie(
+                        reagent_type_data,
+                        values='Cost',
+                        names='Type',
+                        title=t.get('cost_by_reagent_type', 'Cost Split by Reagent Type'),
+                        color_discrete_sequence=['#1f77b4', '#ff7f0e']
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with col_r2:
+                    # Metrics
+                    st.metric(
+                        t.get('antibody_costs', 'Antibody Costs'),
+                        f"${antibody_total:.2f}",
+                        help=t.get('antibody_costs_help', 'Total cost of antibodies used in panels')
+                    )
+                    st.metric(
+                        t.get('general_reagent_costs', 'General Reagent Costs'),
+                        f"${general_reagent_total:.2f}",
+                        help=t.get('general_reagent_costs_help', 'Total cost of buffers, solutions, and consumables')
+                    )
+
+                    total = antibody_total + general_reagent_total
+                    if total > 0:
+                        ab_pct = (antibody_total / total) * 100
+                        gr_pct = (general_reagent_total / total) * 100
+                        st.caption(f"📊 {t.get('antibodies_label', 'Antibodies')}: {ab_pct:.1f}% | {t.get('general_reagents_label', 'General Reagents')}: {gr_pct:.1f}%")
+        else:
+            st.info(t.get('no_reagent_type_data', 'No reagent type breakdown available'))
+
+        st.markdown("---")
+
+        # Top consumed general reagents
+        st.markdown(f"### 🧪 {t.get('top_general_reagents', 'Top Consumed General Reagents')}")
+
+        general_reagent_usage = query_panels("""
+            SELECT
+                gr.name as reagent_name,
+                gr.type as reagent_type,
+                b.name as brand,
+                SUM(pgr.consumption_amount) as total_consumed,
+                pgr.consumption_type,
+                SUM(pgr.cost_per_test) as total_cost,
+                COUNT(DISTINCT pgr.panel_id) as panel_count
+            FROM panel_general_reagents pgr
+            JOIN general_reagents gr ON gr.id = pgr.general_reagent_id
+            LEFT JOIN brands b ON b.id = gr.brand_id
+            JOIN panels p ON p.id = pgr.panel_id
+            JOIN panel_usage_log pul ON pul.panel_id = p.id
+            WHERE pul.execution_date BETWEEN ? AND ?
+            GROUP BY gr.id, gr.name, gr.type, b.name, pgr.consumption_type
+            ORDER BY total_cost DESC
+            LIMIT 10
+        """, (str(start_date), str(end_date)))
+
+        if general_reagent_usage is not None and not general_reagent_usage.empty:
+            # Format consumption with units
+            general_reagent_usage['formatted_consumption'] = general_reagent_usage.apply(
+                lambda x: f"{x['total_consumed']:.1f} {x['consumption_type']}", axis=1
+            )
+
+            st.dataframe(
+                general_reagent_usage[['reagent_name', 'reagent_type', 'brand', 'formatted_consumption', 'total_cost', 'panel_count']].rename(columns={
+                    'reagent_name': t.get('reagent_column', 'Reagent'),
+                    'reagent_type': t.get('type_column', 'Type'),
+                    'brand': t.get('brand_column', 'Brand'),
+                    'formatted_consumption': t.get('consumption_column', 'Total Consumed'),
+                    'total_cost': t.get('total_cost_column', 'Total Cost'),
+                    'panel_count': t.get('panels_column', 'Panels')
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info(t.get('no_general_reagent_usage', 'No general reagent usage data available'))
+
+        st.markdown("---")
+
+        # Top consumed reagents (antibodies)
         st.markdown(f"### 🧪 {t['top_consumed_reagents']}")
         reagent_consumption = query_panels("""
             SELECT
@@ -241,15 +400,19 @@ def run_economic():
                         panel_id = panels_in_area.iloc[selected_panel_idx]['id']
                         panel_version = panels_in_area.iloc[selected_panel_idx]['version']
 
-                        # Calculate cost from panel
-                        from utils.pricing import calculate_panel_cost_current
-                        cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
+                        # Calculate cost from panel (includes antibodies + general reagents)
+                        from utils.cost_utils import get_panel_cost_breakdown
+                        cost_result = get_panel_cost_breakdown(panel_id)
 
                         if 'error' in cost_result:
                             st.warning(t['cost_calculation_error'].format(error=cost_result['error']))
                             cost_per_test = 0.0
                         else:
                             cost_per_test = cost_result.get('total_cost', 0.0)
+
+                            # Show cost breakdown
+                            if not cost_result.get('is_complete', True):
+                                st.warning(f"⚠️ Some reagents are missing prices: {', '.join(cost_result.get('missing_prices', []))}")
 
                         total_cost = cost_per_test * tests_count
 
