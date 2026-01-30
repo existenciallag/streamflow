@@ -43,37 +43,53 @@ def run_economic():
 
         st.markdown("---")
 
-        # Key metrics
+        # Key metrics with cost validation
         metrics_query = query_panels("""
             SELECT
                 COUNT(*) as total_tests,
-                SUM(total_cost) as total_cost,
-                AVG(cost_per_test) as avg_cost_per_test
+                SUM(COALESCE(total_cost, 0)) as total_cost,
+                AVG(COALESCE(cost_per_test, 0)) as avg_cost_per_test,
+                SUM(CASE WHEN cost_per_test IS NULL OR cost_per_test = 0 THEN 1 ELSE 0 END) as incomplete_cost_count
             FROM panel_usage_log
             WHERE execution_date BETWEEN ? AND ?
         """, (str(start_date), str(end_date)))
 
         if metrics_query is not None and not metrics_query.empty:
             m = metrics_query.iloc[0]
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric(t['total_tests_metric'], int(m['total_tests']) if m['total_tests'] else 0)
             with col2:
-                st.metric(t['total_cost_metric'], f"${m['total_cost']:.2f}" if m['total_cost'] else "$0.00")
+                total_cost_val = float(m['total_cost']) if m['total_cost'] else 0.0
+                st.metric(t['total_cost_metric'], f"${total_cost_val:.2f}")
             with col3:
-                st.metric(t['avg_cost_metric'], f"${m['avg_cost_per_test']:.2f}" if m['avg_cost_per_test'] else "$0.00")
+                avg_cost_val = float(m['avg_cost_per_test']) if m['avg_cost_per_test'] else 0.0
+                st.metric(t['avg_cost_metric'], f"${avg_cost_val:.2f}")
+            with col4:
+                incomplete_count = int(m['incomplete_cost_count']) if m['incomplete_cost_count'] else 0
+                st.metric(
+                    t.get('incomplete_costs', 'Incomplete Costs'),
+                    incomplete_count,
+                    delta=None if incomplete_count == 0 else "⚠️",
+                    delta_color="off" if incomplete_count == 0 else "inverse"
+                )
+
+            # Warning if there are incomplete costs
+            if incomplete_count > 0:
+                st.warning(f"⚠️ {incomplete_count} panel execution(s) have missing or zero cost data. Please verify panel pricing.")
 
         st.markdown("---")
 
-        # Panel usage frequency
+        # Panel usage frequency with cost validation
         st.markdown(f"### 📊 {t['panel_usage_frequency']}")
         panel_usage = query_panels("""
             SELECT
                 p.name as panel_name,
-                pa.name as area_name,
+                COALESCE(pa.name, 'Unclassified') as area_name,
                 COUNT(pul.id) as times_used,
-                SUM(pul.total_cost) as total_cost,
-                AVG(pul.cost_per_test) as avg_cost
+                SUM(COALESCE(pul.total_cost, 0)) as total_cost,
+                AVG(COALESCE(pul.cost_per_test, 0)) as avg_cost,
+                SUM(CASE WHEN pul.cost_per_test IS NULL OR pul.cost_per_test = 0 THEN 1 ELSE 0 END) as incomplete_count
             FROM panel_usage_log pul
             JOIN panels p ON p.id = pul.panel_id
             LEFT JOIN panel_classifications pc ON pc.panel_id = p.id AND pc.is_primary = 1
@@ -115,12 +131,12 @@ def run_economic():
 
         st.markdown("---")
 
-        # Cost breakdown by area
+        # Cost breakdown by area with validation
         st.markdown(f"### 💵 {t['cost_breakdown_header']}")
         area_costs = query_panels("""
             SELECT
                 COALESCE(pa.name, 'Unclassified') as area_name,
-                SUM(pul.total_cost) as total_cost,
+                SUM(COALESCE(pul.total_cost, 0)) as total_cost,
                 COUNT(pul.id) as test_count
             FROM panel_usage_log pul
             LEFT JOIN panel_classifications pc ON pc.panel_id = pul.panel_id AND pc.is_primary = 1
@@ -144,12 +160,12 @@ def run_economic():
 
         st.markdown("---")
 
-        # Cost breakdown by disease category
+        # Cost breakdown by disease category with validation
         st.markdown(f"### 🔬 {t.get('cost_by_disease_category', 'Cost Breakdown by Disease Category')}")
         disease_costs = query_panels("""
             SELECT
                 COALESCE(pdc.name, 'Unclassified') as disease_name,
-                SUM(pul.total_cost) as total_cost,
+                SUM(COALESCE(pul.total_cost, 0)) as total_cost,
                 COUNT(pul.id) as test_count
             FROM panel_usage_log pul
             LEFT JOIN panel_classifications pc ON pc.panel_id = pul.panel_id AND pc.is_primary = 1
@@ -207,10 +223,17 @@ def run_economic():
                 breakdown = get_panel_cost_breakdown(row['panel_id'])
 
                 for item in breakdown.get('breakdown', []):
+                    # Safely get cost - handle both 'cost' and 'reagent_cost' fields
+                    item_cost = item.get('cost') or item.get('reagent_cost') or 0.0
+
+                    # Skip if cost is None (out of stock items)
+                    if item_cost is None:
+                        item_cost = 0.0
+
                     if item.get('type') == 'general_reagent':
-                        general_reagent_total += item['cost']
+                        general_reagent_total += item_cost
                     else:
-                        antibody_total += item['cost']
+                        antibody_total += item_cost
 
             if antibody_total > 0 or general_reagent_total > 0:
                 col_r1, col_r2 = st.columns(2)
@@ -366,14 +389,30 @@ def run_economic():
                     selected_area_idx = area_options.index(selected_area_name)
                     selected_area_id = area_ids[selected_area_idx]
 
-                    # Get all active/validated panels (classification optional)
-                    # The area selection is used for tracking purposes, not filtering
+                    # Try to get panels classified for this area first
                     panels_in_area = query_panels("""
                         SELECT DISTINCT p.id, p.name, p.version
                         FROM panels p
-                        WHERE p.status IN ('validated', 'active')
+                        JOIN panel_classifications pc ON pc.panel_id = p.id
+                        WHERE pc.area_id = ? AND p.status IN ('validated', 'active')
                         ORDER BY p.name
-                    """)
+                    """, (selected_area_id,))
+
+                    # If no classified panels, show all panels with a warning
+                    if panels_in_area is None or panels_in_area.empty:
+                        show_all = st.checkbox(
+                            t.get('show_all_panels', 'Show all active panels (no panels classified for this area)'),
+                            value=False,
+                            help=t.get('show_all_panels_help', 'Panels should be classified in Panel Builder to appear here automatically')
+                        )
+
+                        if show_all:
+                            panels_in_area = query_panels("""
+                                SELECT DISTINCT p.id, p.name, p.version
+                                FROM panels p
+                                WHERE p.status IN ('validated', 'active')
+                                ORDER BY p.name
+                            """)
 
                     if panels_in_area is None or panels_in_area.empty:
                         st.warning(t['no_panels_available'].format(area=selected_area_name))
@@ -383,7 +422,31 @@ def run_economic():
                         selected_panel_idx = st.selectbox(t['panel_label_form'], range(len(panel_options)),
                                                          format_func=lambda x: panel_options[x])
 
-                        execution_date = st.date_input(t['execution_date_label'], value=date.today())
+                        # Date range selection
+                        date_mode = st.radio(
+                            t.get('date_mode_label', 'Logging Mode'),
+                            options=['single', 'range'],
+                            format_func=lambda x: t.get(f'date_mode_{x}', 'Single Date' if x == 'single' else 'Date Range'),
+                            horizontal=True
+                        )
+
+                        if date_mode == 'single':
+                            execution_date = st.date_input(t['execution_date_label'], value=date.today())
+                            start_date = execution_date
+                            end_date = execution_date
+                        else:
+                            col_dr1, col_dr2 = st.columns(2)
+                            with col_dr1:
+                                start_date = st.date_input(
+                                    t.get('start_date_label', 'Start Date'),
+                                    value=date.today() - timedelta(days=7)
+                                )
+                            with col_dr2:
+                                end_date = st.date_input(
+                                    t.get('end_date_label', 'End Date'),
+                                    value=date.today()
+                                )
+                            execution_date = start_date  # For backward compatibility
 
             with col2:
                 st.markdown(f"**{t['volume_cost_section']}**")
@@ -416,22 +479,33 @@ def run_economic():
 
                         total_cost = cost_per_test * tests_count
 
+                        # Validate date range
+                        if start_date > end_date:
+                            st.error(t.get('invalid_date_range', 'Start date must be before or equal to end date'))
+                            st.stop()
+
                         # Insert usage log
                         usage_id = str(uuid.uuid4())
                         query_panels("""
                             INSERT INTO panel_usage_log (
-                                id, panel_id, panel_version, execution_date, area_id,
+                                id, panel_id, panel_version, execution_date, start_date, end_date, area_id,
                                 is_patient_tracked, tests_count,
                                 cost_per_test, total_cost,
                                 operator, notes, created_at
-                            ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
                         """, (
-                            usage_id, panel_id, panel_version, str(execution_date), selected_area_id,
+                            usage_id, panel_id, panel_version, str(execution_date), str(start_date), str(end_date), selected_area_id,
                             tests_count, cost_per_test, total_cost,
                             operator or None, notes or None, datetime.now().isoformat()
                         ), commit=True)
 
-                        st.success(f"✅ {t['logged_success'].format(count=tests_count, panel=panels_in_area.iloc[selected_panel_idx]['name'])}")
+                        date_range_text = ""
+                        if start_date == end_date:
+                            date_range_text = str(start_date)
+                        else:
+                            date_range_text = f"{start_date} to {end_date}"
+
+                        st.success(f"✅ {t['logged_success'].format(count=tests_count, panel=panels_in_area.iloc[selected_panel_idx]['name'])} ({date_range_text})")
                         st.info(t['total_cost_info'].format(amount=f"{total_cost:.2f}"))
                         st.rerun()
 
@@ -445,6 +519,8 @@ def run_economic():
         recent_logs = query_panels("""
             SELECT
                 pul.execution_date,
+                pul.start_date,
+                pul.end_date,
                 p.name as panel_name,
                 pa.name as area_name,
                 pul.tests_count,
@@ -459,9 +535,22 @@ def run_economic():
         """)
 
         if recent_logs is not None and not recent_logs.empty:
+            # Format date range display
+            def format_date_range(row):
+                start = row.get('start_date') or row.get('execution_date')
+                end = row.get('end_date') or row.get('execution_date')
+                if start and end:
+                    if start == end:
+                        return str(start)
+                    else:
+                        return f"{start} to {end}"
+                return row.get('execution_date', 'N/A')
+
+            recent_logs['date_range'] = recent_logs.apply(format_date_range, axis=1)
+
             st.dataframe(
-                recent_logs.rename(columns={
-                    'execution_date': t['date_column'],
+                recent_logs[['date_range', 'panel_name', 'area_name', 'tests_count', 'total_cost', 'operator']].rename(columns={
+                    'date_range': t.get('date_range_column', 'Date / Period'),
                     'panel_name': t['panel_column'],
                     'area_name': t['area_column'],
                     'tests_count': t['tests_column'],
