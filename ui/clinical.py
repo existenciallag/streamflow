@@ -309,9 +309,33 @@ def run_clinical():
                         with col_conf1:
                             if st.button("✓ Yes, Delete", type="primary", key="confirm_delete_yes"):
                                 try:
-                                    # Delete patient and cascade to related records
+                                    # First, get all case_panels for this patient's cases to clean up references
+                                    case_panels_to_clean = query_panels("""
+                                        SELECT cp.id
+                                        FROM case_panels cp
+                                        JOIN clinical_cases cc ON cc.id = cp.case_id
+                                        WHERE cc.patient_id = ?
+                                    """, (p['id'],))
+
+                                    # Set case_panel_id to NULL in panel_usage_log (keep economic logs for history)
+                                    if case_panels_to_clean is not None and not case_panels_to_clean.empty:
+                                        for _, row in case_panels_to_clean.iterrows():
+                                            query_panels("""
+                                                UPDATE panel_usage_log
+                                                SET case_panel_id = NULL
+                                                WHERE case_panel_id = ?
+                                            """, (row['id'],), commit=True)
+
+                                            # Also clean up reagent_consumption_log
+                                            query_panels("""
+                                                UPDATE reagent_consumption_log
+                                                SET case_panel_id = NULL
+                                                WHERE case_panel_id = ?
+                                            """, (row['id'],), commit=True)
+
+                                    # Now delete patient (will cascade to cases, case_panels, etc.)
                                     query_panels("DELETE FROM patients WHERE id = ?", (p['id'],), commit=True)
-                                    st.success(f"Patient {p['initials']} deleted successfully")
+                                    st.success(f"✅ Patient {p['initials']} deleted successfully. Economic logs preserved for historical tracking.")
                                     st.session_state["selected_patient_id"] = None
                                     st.session_state["confirm_delete_patient"] = False
                                     st.rerun()
