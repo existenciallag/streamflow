@@ -46,7 +46,7 @@ def run_economic():
         # Key metrics with cost validation
         metrics_query = query_panels("""
             SELECT
-                COUNT(*) as total_tests,
+                SUM(COALESCE(tests_count, 1)) as total_tests,
                 SUM(COALESCE(total_cost, 0)) as total_cost,
                 AVG(COALESCE(cost_per_test, 0)) as avg_cost_per_test,
                 SUM(CASE WHEN cost_per_test IS NULL OR cost_per_test = 0 THEN 1 ELSE 0 END) as incomplete_cost_count
@@ -176,7 +176,7 @@ def run_economic():
             SELECT
                 COALESCE(pa.name, 'Unclassified') as area_name,
                 SUM(COALESCE(pul.total_cost, 0)) as total_cost,
-                COUNT(pul.id) as test_count
+                SUM(COALESCE(pul.tests_count, 1)) as test_count
             FROM panel_usage_log pul
             LEFT JOIN panel_classifications pc ON pc.panel_id = pul.panel_id AND pc.is_primary = 1
             LEFT JOIN panel_areas pa ON pa.id = pc.area_id
@@ -205,7 +205,7 @@ def run_economic():
             SELECT
                 COALESCE(pdc.name, 'Unclassified') as disease_name,
                 SUM(COALESCE(pul.total_cost, 0)) as total_cost,
-                COUNT(pul.id) as test_count
+                SUM(COALESCE(pul.tests_count, 1)) as test_count
             FROM panel_usage_log pul
             LEFT JOIN panel_classifications pc ON pc.panel_id = pul.panel_id AND pc.is_primary = 1
             LEFT JOIN panel_disease_categories pdc ON pdc.id = pc.disease_category_id
@@ -634,8 +634,8 @@ def run_economic():
         monthly_data = query_panels("""
             SELECT
                 strftime('%Y-%m', execution_date) as month,
-                COUNT(*) as total_tests,
-                SUM(total_cost) as total_cost
+                SUM(COALESCE(tests_count, 1)) as total_tests,
+                SUM(COALESCE(total_cost, 0)) as total_cost
             FROM panel_usage_log
             GROUP BY month
             ORDER BY month DESC
