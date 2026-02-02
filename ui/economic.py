@@ -78,6 +78,45 @@ def run_economic():
             if incomplete_count > 0:
                 st.warning(f"⚠️ {incomplete_count} panel execution(s) have missing or zero cost data. Please verify panel pricing.")
 
+        # Usage source breakdown (Patient-tracked vs Manual)
+        st.markdown("---")
+        st.markdown(f"#### {t.get('usage_source_breakdown', '📊 Usage Source Breakdown')}")
+
+        source_breakdown = query_panels("""
+            SELECT
+                CASE WHEN is_patient_tracked = 1 THEN 'Patient-Tracked' ELSE 'Manual' END as source,
+                COUNT(*) as count,
+                SUM(COALESCE(total_cost, 0)) as total_cost
+            FROM panel_usage_log
+            WHERE execution_date BETWEEN ? AND ?
+            GROUP BY is_patient_tracked
+        """, (str(start_date), str(end_date)))
+
+        if source_breakdown is not None and not source_breakdown.empty:
+            col_s1, col_s2 = st.columns(2)
+
+            with col_s1:
+                fig = px.pie(
+                    source_breakdown,
+                    values='count',
+                    names='source',
+                    title=t.get('usage_by_source', 'Panel Executions by Source'),
+                    color_discrete_map={'Patient-Tracked': '#2ecc71', 'Manual': '#3498db'}
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col_s2:
+                for _, row in source_breakdown.iterrows():
+                    source_name = row['source']
+                    icon = "📋" if source_name == "Patient-Tracked" else "✏️"
+                    st.metric(
+                        f"{icon} {source_name}",
+                        f"{int(row['count'])} panels",
+                        delta=f"${row['total_cost']:.2f} total"
+                    )
+
+                st.caption("💡 Patient-Tracked: Automatically logged from Clinical cases | Manual: Logged via Economic section")
+
         st.markdown("---")
 
         # Panel usage frequency with cost validation
@@ -531,11 +570,14 @@ def run_economic():
                 pa.name as area_name,
                 pul.tests_count,
                 pul.total_cost,
-                pul.operator
+                pul.operator,
+                pul.is_patient_tracked,
+                cc.case_number
             FROM panel_usage_log pul
             JOIN panels p ON p.id = pul.panel_id
             LEFT JOIN panel_areas pa ON pa.id = pul.area_id
-            WHERE pul.is_patient_tracked = 0
+            LEFT JOIN case_panels cp ON cp.id = pul.case_panel_id
+            LEFT JOIN clinical_cases cc ON cc.id = cp.case_id
             ORDER BY pul.created_at DESC
             LIMIT 20
         """)
@@ -552,13 +594,24 @@ def run_economic():
                         return f"{start} to {end}"
                 return row.get('execution_date', 'N/A')
 
+            # Format source display
+            def format_source(row):
+                if row.get('is_patient_tracked') == 1:
+                    case_num = row.get('case_number')
+                    if case_num:
+                        return f"📋 Patient ({case_num})"
+                    return "📋 Patient"
+                return "✏️ Manual"
+
             recent_logs['date_range'] = recent_logs.apply(format_date_range, axis=1)
+            recent_logs['source'] = recent_logs.apply(format_source, axis=1)
 
             st.dataframe(
-                recent_logs[['date_range', 'panel_name', 'area_name', 'tests_count', 'total_cost', 'operator']].rename(columns={
+                recent_logs[['date_range', 'panel_name', 'area_name', 'source', 'tests_count', 'total_cost', 'operator']].rename(columns={
                     'date_range': t.get('date_range_column', 'Date / Period'),
                     'panel_name': t['panel_column'],
                     'area_name': t['area_column'],
+                    'source': t.get('source_column', 'Source'),
                     'tests_count': t['tests_column'],
                     'total_cost': t['cost_column'],
                     'operator': t['operator_column']

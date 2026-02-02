@@ -12,6 +12,101 @@ from utils.translations import CLINICAL
 from utils.cost_utils import get_case_total_cost, get_panel_cost_breakdown
 
 
+def auto_log_panel_usage(case_panel_id, case_id, panel_id, run_date, operator, notes):
+    """
+    Automatically log panel usage to economic tracking when a panel is assigned to a case.
+    This ensures synchronization between clinical activity and economic reporting.
+
+    Args:
+        case_panel_id: ID of the case_panels record
+        case_id: ID of the clinical case
+        panel_id: ID of the panel being assigned
+        run_date: Scheduled run date for the panel
+        operator: Person who assigned the panel
+        notes: Assignment reason/notes
+    """
+    try:
+        # Get case details to determine the clinical area
+        case_info = query_panels("""
+            SELECT
+                cc.id,
+                cc.case_number,
+                cc.disease_category_id,
+                pdc.area_id
+            FROM clinical_cases cc
+            LEFT JOIN panel_disease_categories pdc ON pdc.id = cc.disease_category_id
+            WHERE cc.id = ?
+        """, (case_id,))
+
+        if case_info is None or case_info.empty:
+            # Can't determine area, skip logging
+            return
+
+        case = case_info.iloc[0]
+        area_id = case.get('area_id')
+
+        # If no area found, try to get from panel classification
+        if not area_id or pd.isna(area_id):
+            panel_area = query_panels("""
+                SELECT pc.area_id
+                FROM panel_classifications pc
+                WHERE pc.panel_id = ? AND pc.is_primary = 1
+                LIMIT 1
+            """, (panel_id,))
+
+            if panel_area is not None and not panel_area.empty:
+                area_id = panel_area.iloc[0]['area_id']
+
+        # Get panel details
+        panel_info = query_panels("""
+            SELECT id, name, version
+            FROM panels
+            WHERE id = ?
+        """, (panel_id,))
+
+        if panel_info is None or panel_info.empty:
+            return
+
+        panel = panel_info.iloc[0]
+
+        # Calculate panel cost using existing cost breakdown function
+        cost_breakdown = get_panel_cost_breakdown(panel_id)
+        cost_per_test = cost_breakdown.get('total_cost', 0.0)
+
+        # Create economic log entry
+        usage_id = str(uuid.uuid4())
+        query_panels("""
+            INSERT INTO panel_usage_log (
+                id, panel_id, panel_version,
+                execution_date, start_date, end_date,
+                area_id, case_panel_id, is_patient_tracked,
+                tests_count, cost_per_test, total_cost,
+                operator, notes, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?)
+        """, (
+            usage_id,
+            panel_id,
+            panel['version'],
+            str(run_date),  # execution_date
+            str(run_date),  # start_date
+            str(run_date),  # end_date
+            area_id,
+            case_panel_id,
+            # is_patient_tracked = 1 (marks this as auto-generated from clinical activity)
+            # tests_count = 1 (one panel per patient)
+            cost_per_test,
+            cost_per_test,  # total_cost = cost_per_test * 1
+            operator,
+            f"Auto-logged from case {case.get('case_number', 'Unknown')}: {notes[:200] if notes else 'Panel assigned'}",
+            datetime.now().isoformat()
+        ), commit=True)
+
+    except Exception as e:
+        # Don't fail the panel assignment if economic logging fails
+        # Just log the error for debugging
+        print(f"Warning: Failed to auto-log panel usage for economic tracking: {e}")
+
+
 def run_clinical():
     """Main clinical section interface"""
     # Get language from session state
@@ -788,7 +883,17 @@ def run_clinical():
                                                 str(run_date), datetime.now().isoformat()
                                             ), commit=True)
 
-                                            st.success(f"Panel assigned successfully by {assigned_by}")
+                                            # Automatically log panel usage for economic tracking
+                                            auto_log_panel_usage(
+                                                case_panel_id=case_panel_id,
+                                                case_id=c['id'],
+                                                panel_id=panel_id,
+                                                run_date=run_date,
+                                                operator=assigned_by.strip(),
+                                                notes=assignment_reason.strip()
+                                            )
+
+                                            st.success(f"✅ Panel assigned successfully by {assigned_by} (automatically logged to Economic tracking)")
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Error: {e}")
