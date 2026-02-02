@@ -125,7 +125,8 @@ def run_economic():
             SELECT
                 p.name as panel_name,
                 COALESCE(pa.name, 'Unclassified') as area_name,
-                COUNT(pul.id) as times_used,
+                COUNT(pul.id) as times_logged,
+                SUM(COALESCE(pul.tests_count, 1)) as total_tests,
                 SUM(COALESCE(pul.total_cost, 0)) as total_cost,
                 AVG(COALESCE(pul.cost_per_test, 0)) as avg_cost,
                 SUM(CASE WHEN pul.cost_per_test IS NULL OR pul.cost_per_test = 0 THEN 1 ELSE 0 END) as incomplete_count
@@ -135,7 +136,7 @@ def run_economic():
             LEFT JOIN panel_areas pa ON pa.id = pc.area_id
             WHERE pul.execution_date BETWEEN ? AND ?
             GROUP BY p.id, p.name, pa.name
-            ORDER BY times_used DESC
+            ORDER BY total_tests DESC
             LIMIT 10
         """, (str(start_date), str(end_date)))
 
@@ -144,21 +145,22 @@ def run_economic():
             fig = px.bar(
                 panel_usage,
                 x='panel_name',
-                y='times_used',
+                y='total_tests',
                 color='area_name',
-                title=t['top_10_panels_title'],
-                labels={'times_used': t['times_used_label'], 'panel_name': t['panel_label']},
-                text='times_used'
+                title=t.get('top_10_panels_by_tests', 'Top 10 Panels by Test Volume'),
+                labels={'total_tests': t.get('total_tests_label', 'Total Tests'), 'panel_name': t['panel_label']},
+                text='total_tests'
             )
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
 
             # Table
             st.dataframe(
-                panel_usage[['panel_name', 'area_name', 'times_used', 'total_cost', 'avg_cost']].rename(columns={
+                panel_usage[['panel_name', 'area_name', 'times_logged', 'total_tests', 'total_cost', 'avg_cost']].rename(columns={
                     'panel_name': t['panel_column'],
                     'area_name': t['area_column'],
-                    'times_used': t['times_used_column'],
+                    'times_logged': t.get('times_logged_column', 'Times Logged'),
+                    'total_tests': t.get('total_tests_column', 'Total Tests'),
                     'total_cost': t['total_cost_column'],
                     'avg_cost': t['avg_cost_column']
                 }),
@@ -327,10 +329,11 @@ def run_economic():
                 gr.name as reagent_name,
                 gr.type as reagent_type,
                 b.name as brand,
-                SUM(pgr.consumption_amount) as total_consumed,
                 pgr.consumption_type,
-                SUM(pgr.cost_per_test) as total_cost,
-                COUNT(DISTINCT pgr.panel_id) as panel_count
+                SUM(pgr.consumption_amount * COALESCE(pul.tests_count, 1)) as total_consumed,
+                SUM(pgr.cost_per_test * COALESCE(pul.tests_count, 1)) as total_cost,
+                COUNT(DISTINCT pgr.panel_id) as panel_count,
+                SUM(COALESCE(pul.tests_count, 1)) as total_tests
             FROM panel_general_reagents pgr
             JOIN general_reagents gr ON gr.id = pgr.general_reagent_id
             LEFT JOIN brands b ON b.id = gr.brand_id
