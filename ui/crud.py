@@ -66,10 +66,12 @@ def log_change(unit_id, field, old, new, note=""):
     insert_db("reagent_unit_history", {
         "reagent_unit_id": unit_id,
         "field": field,
-        "old_value": str(old),
-        "new_value": str(new),
+        "old_value": str(old) if old is not None else "",
+        "new_value": str(new) if new is not None else "",
         "changed_at": pd.Timestamp.now().isoformat(),
-        "note": note
+        "changed_by": None,
+        "team_id": None,
+        "note": note if note else ""
     })
 
 
