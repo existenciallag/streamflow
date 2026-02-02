@@ -370,147 +370,153 @@ def run_economic():
 
         st.info(f"📝 {t['log_usage_info']}")
 
+        # Selection controls OUTSIDE the form for dynamic updates
+        col_sel1, col_sel2 = st.columns(2)
+
+        with col_sel1:
+            st.markdown(f"**{t.get('select_panel_label', 'Select Panel')}**")
+
+            # Select area
+            areas = query_panels("SELECT id, name FROM panel_areas ORDER BY name")
+            if areas is None or areas.empty:
+                st.warning(t['no_clinical_areas_warning'])
+                st.stop()
+
+            area_options = list(areas['name'])
+            area_ids = list(areas['id'])
+
+            selected_area_name = st.selectbox(t['clinical_area_label'], area_options, key="log_area_select")
+            selected_area_idx = area_options.index(selected_area_name)
+            selected_area_id = area_ids[selected_area_idx]
+
+            # Try to get panels classified for this area first
+            panels_in_area = query_panels("""
+                SELECT DISTINCT p.id, p.name, p.version
+                FROM panels p
+                JOIN panel_classifications pc ON pc.panel_id = p.id
+                WHERE pc.area_id = ? AND p.status IN ('validated', 'active')
+                ORDER BY p.name
+            """, (selected_area_id,))
+
+            # If no classified panels, show all panels with a warning
+            if panels_in_area is None or panels_in_area.empty:
+                st.info(f"ℹ️ No panels classified for {selected_area_name}. Showing all active panels.")
+                panels_in_area = query_panels("""
+                    SELECT DISTINCT p.id, p.name, p.version
+                    FROM panels p
+                    WHERE p.status IN ('validated', 'active')
+                    ORDER BY p.name
+                """)
+
+            if panels_in_area is None or panels_in_area.empty:
+                st.error(t.get('no_panels_available_at_all', 'No active panels found in the system'))
+                st.stop()
+
+            panel_options = [f"{p['name']} (v{p['version']})" for _, p in panels_in_area.iterrows()]
+            selected_panel_display = st.selectbox(t['panel_label_form'], panel_options, key="log_panel_select")
+            selected_panel_idx = panel_options.index(selected_panel_display)
+
+        with col_sel2:
+            st.markdown(f"**{t.get('select_dates_label', 'Select Date(s)')}**")
+
+            # Date range selection
+            date_mode = st.radio(
+                t.get('date_mode_label', 'Logging Mode'),
+                options=['single', 'range'],
+                format_func=lambda x: t.get(f'date_mode_{x}', 'Single Date' if x == 'single' else 'Date Range'),
+                horizontal=True,
+                key="log_date_mode"
+            )
+
+            if date_mode == 'single':
+                execution_date = st.date_input(t['execution_date_label'], value=date.today(), key="log_single_date")
+                start_date_sel = execution_date
+                end_date_sel = execution_date
+            else:
+                col_dr1, col_dr2 = st.columns(2)
+                with col_dr1:
+                    start_date_sel = st.date_input(
+                        t.get('start_date_label', 'Start Date'),
+                        value=date.today() - timedelta(days=7),
+                        key="log_start_date"
+                    )
+                with col_dr2:
+                    end_date_sel = st.date_input(
+                        t.get('end_date_label', 'End Date'),
+                        value=date.today(),
+                        key="log_end_date"
+                    )
+                execution_date = start_date_sel  # For backward compatibility
+
+        st.markdown("---")
+
+        # Form for submission details
         with st.form("log_usage"):
             col1, col2 = st.columns(2)
 
             with col1:
-                st.markdown(f"**{t['execution_details']}**")
-
-                # Select area
-                areas = query_panels("SELECT id, name FROM panel_areas ORDER BY name")
-                if areas is None or areas.empty:
-                    st.warning(t['no_clinical_areas_warning'])
-                    area_options = []
-                else:
-                    area_options = list(areas['name'])
-                    area_ids = list(areas['id'])
-
-                    selected_area_name = st.selectbox(t['clinical_area_label'], area_options)
-                    selected_area_idx = area_options.index(selected_area_name)
-                    selected_area_id = area_ids[selected_area_idx]
-
-                    # Try to get panels classified for this area first
-                    panels_in_area = query_panels("""
-                        SELECT DISTINCT p.id, p.name, p.version
-                        FROM panels p
-                        JOIN panel_classifications pc ON pc.panel_id = p.id
-                        WHERE pc.area_id = ? AND p.status IN ('validated', 'active')
-                        ORDER BY p.name
-                    """, (selected_area_id,))
-
-                    # If no classified panels, show all panels with a warning
-                    if panels_in_area is None or panels_in_area.empty:
-                        show_all = st.checkbox(
-                            t.get('show_all_panels', 'Show all active panels (no panels classified for this area)'),
-                            value=False,
-                            help=t.get('show_all_panels_help', 'Panels should be classified in Panel Builder to appear here automatically')
-                        )
-
-                        if show_all:
-                            panels_in_area = query_panels("""
-                                SELECT DISTINCT p.id, p.name, p.version
-                                FROM panels p
-                                WHERE p.status IN ('validated', 'active')
-                                ORDER BY p.name
-                            """)
-
-                    if panels_in_area is None or panels_in_area.empty:
-                        st.warning(t['no_panels_available'].format(area=selected_area_name))
-                        panel_options = []
-                    else:
-                        panel_options = [f"{p['name']} (v{p['version']})" for _, p in panels_in_area.iterrows()]
-                        selected_panel_idx = st.selectbox(t['panel_label_form'], range(len(panel_options)),
-                                                         format_func=lambda x: panel_options[x])
-
-                        # Date range selection
-                        date_mode = st.radio(
-                            t.get('date_mode_label', 'Logging Mode'),
-                            options=['single', 'range'],
-                            format_func=lambda x: t.get(f'date_mode_{x}', 'Single Date' if x == 'single' else 'Date Range'),
-                            horizontal=True
-                        )
-
-                        if date_mode == 'single':
-                            execution_date = st.date_input(t['execution_date_label'], value=date.today())
-                            start_date = execution_date
-                            end_date = execution_date
-                        else:
-                            col_dr1, col_dr2 = st.columns(2)
-                            with col_dr1:
-                                start_date = st.date_input(
-                                    t.get('start_date_label', 'Start Date'),
-                                    value=date.today() - timedelta(days=7)
-                                )
-                            with col_dr2:
-                                end_date = st.date_input(
-                                    t.get('end_date_label', 'End Date'),
-                                    value=date.today()
-                                )
-                            execution_date = start_date  # For backward compatibility
+                st.markdown(f"**{t['volume_cost_section']}**")
+                tests_count = st.number_input(t['tests_count_label'], min_value=1, value=1, step=1)
 
             with col2:
-                st.markdown(f"**{t['volume_cost_section']}**")
-
-                tests_count = st.number_input(t['tests_count_label'], min_value=1, value=1, step=1)
+                st.markdown(f"**{t.get('additional_info_label', 'Additional Information')}**")
                 operator = st.text_input(t['operator_label'], placeholder=t['operator_placeholder'])
                 notes = st.text_area(t['notes_label'], height=100, placeholder=t['notes_placeholder'])
 
             if st.form_submit_button(f"✓ {t['log_usage_button']}", type="primary", use_container_width=True):
-                if not area_options or not panel_options:
-                    st.error(t['config_error'])
-                else:
-                    try:
-                        panel_id = panels_in_area.iloc[selected_panel_idx]['id']
-                        panel_version = panels_in_area.iloc[selected_panel_idx]['version']
+                try:
+                    panel_id = panels_in_area.iloc[selected_panel_idx]['id']
+                    panel_version = panels_in_area.iloc[selected_panel_idx]['version']
+                    panel_name = panels_in_area.iloc[selected_panel_idx]['name']
 
-                        # Calculate cost from panel (includes antibodies + general reagents)
-                        from utils.cost_utils import get_panel_cost_breakdown
-                        cost_result = get_panel_cost_breakdown(panel_id)
+                    # Calculate cost from panel (includes antibodies + general reagents)
+                    from utils.cost_utils import get_panel_cost_breakdown
+                    cost_result = get_panel_cost_breakdown(panel_id)
 
-                        if 'error' in cost_result:
-                            st.warning(t['cost_calculation_error'].format(error=cost_result['error']))
-                            cost_per_test = 0.0
-                        else:
-                            cost_per_test = cost_result.get('total_cost', 0.0)
+                    if 'error' in cost_result:
+                        st.warning(t.get('cost_calculation_error', 'Error calculating cost: {error}').format(error=cost_result.get('error', 'Unknown')))
+                        cost_per_test = 0.0
+                    else:
+                        cost_per_test = cost_result.get('total_cost', 0.0)
 
-                            # Show cost breakdown
-                            if not cost_result.get('is_complete', True):
-                                st.warning(f"⚠️ Some reagents are missing prices: {', '.join(cost_result.get('missing_prices', []))}")
+                        # Show cost breakdown
+                        if not cost_result.get('is_complete', True):
+                            st.warning(f"⚠️ Some reagents are missing prices: {', '.join(cost_result.get('missing_prices', []))}")
 
-                        total_cost = cost_per_test * tests_count
+                    total_cost = cost_per_test * tests_count
 
-                        # Validate date range
-                        if start_date > end_date:
-                            st.error(t.get('invalid_date_range', 'Start date must be before or equal to end date'))
-                            st.stop()
+                    # Validate date range
+                    if start_date_sel > end_date_sel:
+                        st.error(t.get('invalid_date_range', 'Start date must be before or equal to end date'))
+                        st.stop()
 
-                        # Insert usage log
-                        usage_id = str(uuid.uuid4())
-                        query_panels("""
-                            INSERT INTO panel_usage_log (
-                                id, panel_id, panel_version, execution_date, start_date, end_date, area_id,
-                                is_patient_tracked, tests_count,
-                                cost_per_test, total_cost,
-                                operator, notes, created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            usage_id, panel_id, panel_version, str(execution_date), str(start_date), str(end_date), selected_area_id,
-                            tests_count, cost_per_test, total_cost,
-                            operator or None, notes or None, datetime.now().isoformat()
-                        ), commit=True)
+                    # Insert usage log
+                    usage_id = str(uuid.uuid4())
+                    query_panels("""
+                        INSERT INTO panel_usage_log (
+                            id, panel_id, panel_version, execution_date, start_date, end_date, area_id,
+                            is_patient_tracked, tests_count,
+                            cost_per_test, total_cost,
+                            operator, notes, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        usage_id, panel_id, panel_version, str(execution_date), str(start_date_sel), str(end_date_sel), selected_area_id,
+                        tests_count, cost_per_test, total_cost,
+                        operator or None, notes or None, datetime.now().isoformat()
+                    ), commit=True)
 
-                        date_range_text = ""
-                        if start_date == end_date:
-                            date_range_text = str(start_date)
-                        else:
-                            date_range_text = f"{start_date} to {end_date}"
+                    date_range_text = ""
+                    if start_date_sel == end_date_sel:
+                        date_range_text = str(start_date_sel)
+                    else:
+                        date_range_text = f"{start_date_sel} to {end_date_sel}"
 
-                        st.success(f"✅ {t['logged_success'].format(count=tests_count, panel=panels_in_area.iloc[selected_panel_idx]['name'])} ({date_range_text})")
-                        st.info(t['total_cost_info'].format(amount=f"{total_cost:.2f}"))
-                        st.rerun()
+                    st.success(f"✅ {t.get('logged_success', 'Successfully logged {count} test(s) for panel {panel}').format(count=tests_count, panel=panel_name)} ({date_range_text})")
+                    st.info(t.get('total_cost_info', 'Total cost: ${amount}').format(amount=f"{total_cost:.2f}"))
+                    st.rerun()
 
-                    except Exception as e:
-                        st.error(t['logging_error'].format(error=str(e)))
+                except Exception as e:
+                    st.error(t.get('logging_error', 'Error logging usage: {error}').format(error=str(e)))
 
         st.markdown("---")
 
