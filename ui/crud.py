@@ -63,14 +63,18 @@ def delete_db(table, id_):
 # ============================================================
 
 def log_change(unit_id, field, old, new, note=""):
+    """
+    Log a change to a reagent unit in the history table.
+    Includes all required fields to match the reagent_unit_history schema.
+    """
     insert_db("reagent_unit_history", {
         "reagent_unit_id": unit_id,
         "field": field,
         "old_value": str(old) if old is not None else "",
         "new_value": str(new) if new is not None else "",
         "changed_at": pd.Timestamp.now().isoformat(),
-        "changed_by": None,
-        "team_id": None,
+        "changed_by": None,  # Can be populated if user tracking is added
+        "team_id": None,     # Can be populated if multi-tenancy is added
         "note": note if note else ""
     })
 
