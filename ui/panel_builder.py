@@ -128,9 +128,10 @@ def get_general_reagents_with_units():
                 THEN gru.id
             END) as available_units,
 
-            -- In use units
+            -- In use units (only non-expired, consistent with available_units)
             COUNT(DISTINCT CASE
                 WHEN LOWER(gru.status) = 'in use'
+                AND (gru.expiration_date IS NULL OR gru.expiration_date > datetime('now'))
                 THEN gru.id
             END) as in_use_units,
 
@@ -461,9 +462,13 @@ def render_general_reagent_card(gr, key_prefix):
         st.markdown("---")
         st.caption("**Select Unit/Batch**")
 
+        if int(gr['available_units'] or 0) == 0:
+            st.info("No units available for selection — all units are expired or discarded.")
+            return None
+
         units = get_general_reagent_units(gr['reagent_id'])
         if units.empty:
-            st.error("No available units for this reagent")
+            st.info("No units available for selection — all units are expired or discarded.")
             return None
 
         unit_options = {}
