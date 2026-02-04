@@ -206,6 +206,7 @@ def run_clinical():
             else:
                 # Display patient list
                 display_patients = patients[['initials', 'mrn', 'age', 'sex']].copy()
+                display_patients = display_patients.rename(columns={'initials': 'Name'})
                 selected = st.dataframe(
                     display_patients,
                     use_container_width=True,
@@ -224,7 +225,7 @@ def run_clinical():
                     st.markdown("**Patient Information**")
 
                     mrn = st.text_input("Admission Protocol *", placeholder="e.g., 2025-001234")
-                    initials = st.text_input("Initials *", placeholder="e.g., JPS", max_chars=10)
+                    patient_name = st.text_input("Name *", placeholder="e.g., Juan P. Silva")
 
                     col1, col2 = st.columns(2)
                     with col1:
@@ -242,11 +243,18 @@ def run_clinical():
                         requesting_physician = st.text_input("Requesting Physician")
 
                     requesting_institution = st.text_input("Requesting Institution")
+
+                    clinical_history = st.text_area(
+                        "Clinical History",
+                        placeholder="e.g., Leukemia LCA diagnosticada 2024, tratamiento con quimioterapia...",
+                        height=80
+                    )
+
                     notes = st.text_area("Notes", height=60)
 
                     if st.form_submit_button("Register Patient", use_container_width=True):
-                        if not mrn or not initials:
-                            st.error("MRN and Initials are required")
+                        if not mrn or not patient_name:
+                            st.error("MRN and Name are required")
                         else:
                             try:
                                 patient_id = str(uuid.uuid4())
@@ -255,16 +263,18 @@ def run_clinical():
                                         id, medical_record_number, initials,
                                         date_of_birth, age_at_registration, sex,
                                         referring_physician, referring_institution,
-                                        notes, status, registration_date, created_at
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
+                                        clinical_history, notes, status,
+                                        registration_date, created_at
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
                                 """, (
-                                    patient_id, mrn, initials.upper(),
+                                    patient_id, mrn, patient_name.strip(),
                                     str(dob) if dob else None, age, sex,
                                     requesting_physician or None, requesting_institution or None,
-                                    notes or None, datetime.now().isoformat(), datetime.now().isoformat()
+                                    clinical_history or None, notes or None,
+                                    datetime.now().isoformat(), datetime.now().isoformat()
                                 ), commit=True)
 
-                                st.success(f"Patient {initials.upper()} registered successfully")
+                                st.success(f"Patient {patient_name.strip()} registered successfully")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -369,6 +379,10 @@ def run_clinical():
                     if p['referring_institution']:
                         st.text(f"Institution: {p['referring_institution']}")
 
+                    if p.get('clinical_history'):
+                        st.markdown("**Clinical History:**")
+                        st.info(p['clinical_history'])
+
                     # Edit patient form
                     if st.session_state["editing_patient"]:
                         st.markdown("---")
@@ -376,7 +390,7 @@ def run_clinical():
 
                         with st.form("edit_patient_form"):
                             edit_mrn = st.text_input("Admission Protocol", value=p['medical_record_number'])
-                            edit_initials = st.text_input("Initials", value=p['initials'])
+                            edit_name = st.text_input("Name", value=p['initials'])
 
                             col1, col2 = st.columns(2)
                             with col1:
@@ -388,7 +402,8 @@ def run_clinical():
                                 edit_physician = st.text_input("Requesting Physician", value=p['referring_physician'] or "")
                                 edit_institution = st.text_input("Requesting Institution", value=p['referring_institution'] or "")
 
-                            edit_notes = st.text_area("Notes", value=p['notes'] or "", height=80)
+                            edit_clinical_history = st.text_area("Clinical History", value=p.get('clinical_history') or "", height=80)
+                            edit_notes = st.text_area("Notes", value=p['notes'] or "", height=60)
                             edit_status = st.selectbox("Patient Status", ["active", "discharged", "deceased", "transferred"],
                                                       index=["active", "discharged", "deceased", "transferred"].index(p['status']) if p['status'] in ["active", "discharged", "deceased", "transferred"] else 0)
 
@@ -410,14 +425,16 @@ def run_clinical():
                                             sex = ?,
                                             referring_physician = ?,
                                             referring_institution = ?,
+                                            clinical_history = ?,
                                             notes = ?,
                                             status = ?,
                                             updated_at = ?
                                         WHERE id = ?
                                     """, (
-                                        edit_mrn, edit_initials.upper(),
+                                        edit_mrn, edit_name.strip(),
                                         str(edit_dob) if edit_dob else None, age, edit_sex,
                                         edit_physician or None, edit_institution or None,
+                                        edit_clinical_history or None,
                                         edit_notes or None, edit_status,
                                         datetime.now().isoformat(), p['id']
                                     ), commit=True)
@@ -512,6 +529,18 @@ def run_clinical():
                             priority = st.selectbox("Priority", ["routine", "urgent", "stat"])
                             requesting_physician = st.text_input("Requesting Physician")
 
+                        sample_state = st.text_area(
+                            "Sample State & Characteristics",
+                            placeholder="e.g., Muestra de sangre periférica, color amarillo, volumen 3 mL, coagulada...",
+                            height=80
+                        )
+
+                        previous_results = st.text_area(
+                            "Previous Results",
+                            placeholder="e.g., Hemoglobina 8.2 g/dL, leucocitos 12500, blastos 45%...",
+                            height=80
+                        )
+
                         if st.form_submit_button("Create Case", use_container_width=True):
                             if not clinical_suspicion:
                                 st.error("Clinical suspicion is required")
@@ -528,12 +557,14 @@ def run_clinical():
                                         INSERT INTO clinical_cases (
                                             id, patient_id, case_number, clinical_suspicion,
                                             sample_date, sample_type, referring_physician,
-                                            priority, status, received_at, created_at
-                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                                            priority, status, previous_results, sample_state,
+                                            received_at, created_at
+                                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
                                     """, (
                                         case_id, patient_id, case_number, clinical_suspicion,
                                         str(sample_date), sample_type, requesting_physician or None,
-                                        priority, datetime.now().isoformat(), datetime.now().isoformat()
+                                        priority, previous_results or None, sample_state or None,
+                                        datetime.now().isoformat(), datetime.now().isoformat()
                                     ), commit=True)
 
                                     st.success(f"Case {case_number} created successfully")
@@ -598,6 +629,18 @@ def run_clinical():
 
                             edit_referring_physician = st.text_input("Requesting Physician", value=c['referring_physician'] or "")
 
+                            edit_sample_state = st.text_area(
+                                "Sample State & Characteristics",
+                                value=c.get('sample_state') or "",
+                                height=80
+                            )
+
+                            edit_previous_results = st.text_area(
+                                "Previous Results",
+                                value=c.get('previous_results') or "",
+                                height=80
+                            )
+
                             if st.form_submit_button("Save Changes", use_container_width=True):
                                 try:
                                     query_panels("""
@@ -609,6 +652,8 @@ def run_clinical():
                                             priority = ?,
                                             status = ?,
                                             referring_physician = ?,
+                                            sample_state = ?,
+                                            previous_results = ?,
                                             updated_at = ?
                                         WHERE id = ?
                                     """, (
@@ -616,6 +661,8 @@ def run_clinical():
                                         str(edit_sample_date), edit_sample_type,
                                         edit_priority, edit_status,
                                         edit_referring_physician or None,
+                                        edit_sample_state or None,
+                                        edit_previous_results or None,
                                         datetime.now().isoformat(), c['id']
                                     ), commit=True)
 
@@ -655,6 +702,13 @@ def run_clinical():
 
                     st.markdown(f"**Clinical Suspicion:** {c['clinical_suspicion']}")
                     st.markdown(f"**Sample Type:** {c['sample_type']}")
+
+                    if c.get('sample_state'):
+                        st.markdown(f"**Sample State & Characteristics:** {c['sample_state']}")
+
+                    if c.get('previous_results'):
+                        st.markdown("**Previous Results:**")
+                        st.info(c['previous_results'])
 
                     # Case total cost - calculated dynamically from all assigned panels
                     st.markdown("---")
