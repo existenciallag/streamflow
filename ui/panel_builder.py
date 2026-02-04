@@ -128,6 +128,27 @@ def get_general_reagents_with_units():
                 THEN gru.id
             END) as available_units,
 
+            -- In use units
+            COUNT(DISTINCT CASE
+                WHEN LOWER(gru.status) = 'in use'
+                THEN gru.id
+            END) as in_use_units,
+
+            -- Expired but not discarded
+            COUNT(DISTINCT CASE
+                WHEN LOWER(gru.status) IN ('stored', 'in use')
+                AND gru.expiration_date IS NOT NULL
+                AND gru.expiration_date <= datetime('now')
+                THEN gru.id
+            END) as expired_units,
+
+            -- Earliest expiration of available units
+            MIN(CASE
+                WHEN LOWER(gru.status) IN ('stored', 'in use')
+                AND (gru.expiration_date IS NULL OR gru.expiration_date > datetime('now'))
+                THEN gru.expiration_date
+            END) as earliest_expiration,
+
             -- Average volume for units
             AVG(CASE
                 WHEN LOWER(gru.status) IN ('stored', 'in use')
@@ -415,9 +436,24 @@ def render_general_reagent_card(gr, key_prefix):
             else:
                 st.write("N/A")
 
-            st.caption("**Available Units**")
-            if gr['available_units'] and gr['available_units'] > 0:
-                st.write(f"✓ {int(gr['available_units'])} units")
+            st.caption("**Stock Status**")
+            stock_parts = []
+
+            stored_count = int(gr['available_units'] or 0) - int(gr['in_use_units'] or 0)
+            if stored_count > 0:
+                stock_parts.append(f"✓ {stored_count} stored")
+
+            if gr.get('in_use_units') and int(gr['in_use_units']) > 0:
+                stock_parts.append(f"🔵 {int(gr['in_use_units'])} in use")
+
+            if gr.get('expired_units') and int(gr['expired_units']) > 0:
+                stock_parts.append(f"⚠️ {int(gr['expired_units'])} expired")
+
+            if stock_parts:
+                for part in stock_parts:
+                    st.write(part)
+                if gr.get('earliest_expiration'):
+                    st.caption(f"Next exp: {str(gr['earliest_expiration'])[:10]}")
             else:
                 st.error("⚠️ No stock available")
 
@@ -433,7 +469,10 @@ def render_general_reagent_card(gr, key_prefix):
         unit_options = {}
         for _, unit in units.iterrows():
             vol_display = f"{unit['volume']:.0f} mL" if unit['volume'] is not None else "N/A mL"
-            label = f"Lot {unit['lot_number']} - {vol_display} - Exp: {unit['expiration_date'][:10] if unit['expiration_date'] else 'N/A'}"
+            status_icon = "🔵" if str(unit['status']).lower() == 'in use' else "✓"
+            status_label = str(unit['status'])
+            exp_display = unit['expiration_date'][:10] if unit['expiration_date'] else 'N/A'
+            label = f"{status_icon} [{status_label}] Lot {unit['lot_number']} - {vol_display} - Exp: {exp_display}"
             unit_options[label] = unit['unit_id']
 
         selected_unit_label = st.selectbox(
