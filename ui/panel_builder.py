@@ -178,7 +178,6 @@ def get_general_reagent_units(reagent_id):
         FROM general_reagent_units gru
         WHERE gru.general_reagent_id = ?
         AND LOWER(gru.status) IN ('stored', 'in use')
-        AND (gru.expiration_date IS NULL OR gru.expiration_date > datetime('now'))
         ORDER BY gru.expiration_date ASC
     """, (reagent_id,))
 
@@ -462,22 +461,37 @@ def render_general_reagent_card(gr, key_prefix):
         st.markdown("---")
         st.caption("**Select Unit/Batch**")
 
-        if int(gr['available_units'] or 0) == 0:
-            st.info("No units available for selection — all units are expired or discarded.")
-            return None
-
         units = get_general_reagent_units(gr['reagent_id'])
         if units.empty:
-            st.info("No units available for selection — all units are expired or discarded.")
+            st.info("No units available — all units are discarded.")
             return None
+
+        from datetime import datetime as _dt
+        now = _dt.now()
 
         unit_options = {}
         for _, unit in units.iterrows():
             vol_display = f"{unit['volume']:.0f} mL" if unit['volume'] is not None else "N/A mL"
-            status_icon = "🔵" if str(unit['status']).lower() == 'in use' else "✓"
             status_label = str(unit['status'])
-            exp_display = unit['expiration_date'][:10] if unit['expiration_date'] else 'N/A'
-            label = f"{status_icon} [{status_label}] Lot {unit['lot_number']} - {vol_display} - Exp: {exp_display}"
+
+            # Determine if expired
+            is_expired = False
+            if unit['expiration_date']:
+                try:
+                    exp_dt = _dt.fromisoformat(str(unit['expiration_date'])[:10])
+                    is_expired = exp_dt < now
+                except (ValueError, TypeError):
+                    pass
+
+            if is_expired:
+                status_icon = "⚠️"
+                exp_display = str(unit['expiration_date'])[:10]
+                label = f"{status_icon} CADUCADO [{status_label}] Lot {unit['lot_number']} - {vol_display} - Exp: {exp_display}"
+            else:
+                status_icon = "🔵" if status_label.lower() == 'in use' else "✓"
+                exp_display = str(unit['expiration_date'])[:10] if unit['expiration_date'] else 'N/A'
+                label = f"{status_icon} [{status_label}] Lot {unit['lot_number']} - {vol_display} - Exp: {exp_display}"
+
             unit_options[label] = unit['unit_id']
 
         selected_unit_label = st.selectbox(
@@ -487,6 +501,15 @@ def render_general_reagent_card(gr, key_prefix):
         )
         selected_unit_id = unit_options[selected_unit_label]
         selected_unit_data = units[units['unit_id'] == selected_unit_id].iloc[0]
+
+        # Alarm if selected unit is expired
+        if selected_unit_data['expiration_date']:
+            try:
+                sel_exp = _dt.fromisoformat(str(selected_unit_data['expiration_date'])[:10])
+                if sel_exp < now:
+                    st.warning(f"⚠️ Este lote está CADUCADO desde {str(selected_unit_data['expiration_date'])[:10]}. Verificar antes de usar.")
+            except (ValueError, TypeError):
+                pass
 
         # Consumption configuration
         st.markdown("---")
