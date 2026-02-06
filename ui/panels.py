@@ -9,7 +9,7 @@ import pandas as pd
 import uuid
 from datetime import datetime
 from ui.crud_panels import query_panels
-from utils.pricing import calculate_panel_cost_current
+from utils.cost_utils import get_panel_cost_breakdown
 from utils.translations import PANELS, COMMON
 
 
@@ -265,18 +265,15 @@ def show_panels(panels_df=None):
             with col2:
                 st.metric("Sample Volume", f"{panel.get('sample_volume') or '—'} µL")
             with col3:
-                # Calculate cost dynamically from current stock
-                cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
+                # Calculate cost dynamically (antibodies + general reagents)
+                cost_result = get_panel_cost_breakdown(panel_id)
 
-                # Handle error cases (e.g., panel deleted, calculation failed)
-                if 'error' in cost_result:
-                    cost_display = "—"
-                    help_text = f"Error: {cost_result.get('error', 'Unknown error')}"
+                cost_display = f"${cost_result.get('total_cost', 0.0):.2f}"
+                if not cost_result.get('is_complete', True):
+                    cost_display += " ⚠️"
+                    help_text = "⚠️ Incomplete: some reagents missing prices/data. See breakdown below."
                 else:
-                    cost_display = f"${cost_result.get('total_cost', 0.0):.2f}"
-                    if not cost_result.get('is_complete', True):
-                        cost_display += " ⚠️"
-                    help_text = "Calculated dynamically from current cheapest stock. ⚠️ = incomplete (some reagents unavailable)"
+                    help_text = "Total cost per test (antibodies + general reagents), calculated dynamically from current prices"
 
                 st.metric(
                     "Est. Cost/Test",
@@ -365,8 +362,8 @@ def show_panels(panels_df=None):
             if panel_reagents.empty:
                 st.info(labels['no_reagents'])
             else:
-                # Calculate cost to get per-reagent breakdown
-                cost_result = calculate_panel_cost_current(panel_id, strategy='cheapest')
+                # Calculate cost to get per-reagent breakdown (antibodies + general reagents)
+                cost_result = get_panel_cost_breakdown(panel_id)
 
                 # Create cost lookup from breakdown
                 cost_lookup = {}
@@ -410,14 +407,25 @@ def show_panels(panels_df=None):
 
                 st.dataframe(display_reagents, use_container_width=True, hide_index=True)
 
+                # Display general reagents if any
+                general_reagent_items = [item for item in cost_result.get('breakdown', []) if item.get('type') == 'general_reagent']
+                if general_reagent_items:
+                    st.markdown("**General Reagents:**")
+                    for gr_item in general_reagent_items:
+                        cost_str = f"${gr_item['cost']:.2f}" if gr_item['cost'] > 0 else "N/A"
+                        details = gr_item.get('details', '')
+                        st.caption(f"• {gr_item['reagent']}: {cost_str} {details}")
+
                 # Display total cost summary
-                # Handle error cases
-                if 'error' in cost_result:
-                    st.warning(f"Could not calculate cost: {cost_result.get('error', 'Unknown error')}")
-                else:
-                    cost_status = "[Complete]" if cost_result.get('is_complete', True) else "[Incomplete]"
-                    st.markdown(f"### {cost_status} Estimated Cost: **${cost_result.get('total_cost', 0.0):.2f}** per test")
-                    st.caption("Calculated from current cheapest stock. Cost updates when reagent prices change.")
+                cost_status = "[Complete]" if cost_result.get('is_complete', True) else "[Incomplete - Missing Data]"
+                st.markdown(f"### {cost_status} Total Cost: **${cost_result.get('total_cost', 0.0):.2f}** per test")
+
+                if not cost_result.get('is_complete', True):
+                    st.warning("⚠️ Cost incomplete — some reagents are missing prices or configuration:")
+                    for missing in cost_result.get('missing_prices', []):
+                        st.caption(f"  • {missing}")
+
+                st.caption("Cost calculated dynamically from current prices. Updates automatically when reagent prices change.")
 
             # Version and Status History
             st.markdown("---")
