@@ -365,12 +365,16 @@ def show_panels(panels_df=None):
                 # Calculate cost to get per-reagent breakdown (antibodies + general reagents)
                 cost_result = get_panel_cost_breakdown(panel_id)
 
-                # Create cost lookup from breakdown
+                # Create cost lookup from breakdown (handle both 'cost' and 'reagent_cost' keys)
                 cost_lookup = {}
                 if 'breakdown' in cost_result:
                     for item in cost_result['breakdown']:
                         reagent_name = item.get('reagent', '')
-                        cost_lookup[reagent_name] = item.get('cost', 0.0)
+                        # Antibodies use 'reagent_cost', general reagents use 'cost'
+                        item_cost = item.get('reagent_cost') or item.get('cost')
+                        # Only add if we have a valid cost (not None)
+                        if item_cost is not None:
+                            cost_lookup[reagent_name] = item_cost
 
                 # Format for display
                 display_reagents = panel_reagents[[
@@ -380,10 +384,10 @@ def show_panels(panels_df=None):
 
                 # Add cost per reagent
                 display_reagents["cost"] = display_reagents["antibody"].apply(
-                    lambda x: cost_lookup.get(x, 0.0)
+                    lambda x: cost_lookup.get(x) if x in cost_lookup else None
                 )
                 display_reagents["cost_display"] = display_reagents["cost"].apply(
-                    lambda x: f"${x:.2f}" if x is not None and x > 0 else "N/A"
+                    lambda x: f"${x:.2f}" if x is not None else "N/A (missing price/stock)"
                 )
 
                 display_reagents["is_intracellular"] = display_reagents["is_intracellular"].apply(
@@ -421,9 +425,23 @@ def show_panels(panels_df=None):
                 st.markdown(f"### {cost_status} Total Cost: **${cost_result.get('total_cost', 0.0):.2f}** per test")
 
                 if not cost_result.get('is_complete', True):
-                    st.warning("⚠️ Cost incomplete — some reagents are missing prices or configuration:")
-                    for missing in cost_result.get('missing_prices', []):
-                        st.caption(f"  • {missing}")
+                    st.warning("⚠️ **Cost incomplete — the following reagents are missing data:**")
+
+                    # Show antibody issues (from missing_prices that don't have parentheses)
+                    antibody_issues = [m for m in cost_result.get('missing_prices', []) if '(' not in m]
+                    if antibody_issues:
+                        st.markdown("**Antibodies (missing stock or price):**")
+                        for missing in antibody_issues:
+                            st.caption(f"  • {missing}")
+
+                    # Show general reagent issues (from missing_prices with details in parentheses)
+                    gr_issues = [m for m in cost_result.get('missing_prices', []) if '(' in m]
+                    if gr_issues:
+                        st.markdown("**General Reagents:**")
+                        for missing in gr_issues:
+                            st.caption(f"  • {missing}")
+
+                    st.caption("💡 **To fix:** Update prices in Reagents/General Reagents, ensure volumes are set, and configure consumption in Panel Builder.")
 
                 st.caption("Cost calculated dynamically from current prices. Updates automatically when reagent prices change.")
 
