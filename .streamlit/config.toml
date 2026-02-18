@@ -10,10 +10,7 @@ gatherUsageStats = false
 serverAddress = "localhost"
 
 [theme]
-primaryColor = "#0066CC"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F4F8"
-textColor = "#1A1A2E"
+base = "dark"
 
 [logger]
 level = "error"
