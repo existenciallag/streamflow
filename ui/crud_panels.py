@@ -12,6 +12,7 @@ def query_panels(sql, params=None, commit=False):
     """
 
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA foreign_keys = ON")  # CRITICAL: Enable foreign keys
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 

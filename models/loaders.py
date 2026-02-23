@@ -1,10 +1,18 @@
 # models/loaders.py
+import os
 import sqlite3
 import pandas as pd
 import streamlit as st
 from pathlib import Path
 
-DB_PATH = Path("db/inventory.db")
+# Resolve DB path robustly:
+# - When packaged (launcher.py sets STREAMFLOW_BASE_DIR), use that directory.
+# - Otherwise fall back to the classic relative path (dev environment).
+_base = os.environ.get("STREAMFLOW_BASE_DIR", "")
+if _base:
+    DB_PATH = Path(_base) / "db" / "inventory.db"
+else:
+    DB_PATH = Path("db/inventory.db")
 
 @st.cache_data
 def load_table(table_name: str) -> pd.DataFrame:

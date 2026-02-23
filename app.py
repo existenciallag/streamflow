@@ -30,6 +30,8 @@ from ui.panel_builder import create_panel  # <-- Panel Builder
 # 👉 NEW: Clinical & Economic sections
 from ui.clinical import run_clinical
 from ui.economic import run_economic
+from ui.settings import run_settings
+from ui.general_reagents import run_general_reagents_crud
 
 # -----------------------------
 # Configuración página
@@ -40,33 +42,101 @@ st.set_page_config(
 )
 
 # -----------------------------
+# Language support
+# -----------------------------
+from utils.translations import NAV, DASHBOARD, CLINICAL, PANELS, SETTINGS, COMMON
+
+if 'language' not in st.session_state:
+    st.session_state['language'] = 'en'  # Default to English
+
+lang = st.session_state['language']
+
+# Get translated labels
+labels = NAV[lang]
+dashboard_labels = DASHBOARD[lang]
+clinical_labels = CLINICAL[lang]
+panels_labels = PANELS[lang]
+settings_labels = SETTINGS[lang]
+common_labels = COMMON[lang]
+
+# -----------------------------
 # Sidebar navegación
 # -----------------------------
-page = st.sidebar.radio(
-    "Navegación",
-    [
-        "Dashboard",
-        "Paneles",
-        "Panel Builder",
-        "🔬 Clinical",
-        "💰 Economic",
-        "CRUD",
-        "Base de datos",
-        "Inventario Avanzado",
-    ]
-)
+st.sidebar.markdown("### " + ("Navigation" if lang == 'en' else "Navegación"))
 
-st.title("Inventario de Citometría")
+# Initialize current page in session state
+if 'current_page' not in st.session_state:
+    st.session_state['current_page'] = None
+
+# Define sections
+operational_pages = [
+    labels['dashboard'],
+    labels['panels'],
+    labels['panel_builder'],
+    labels['clinical'],
+    labels['economic'],
+    labels['reagents'],
+    labels['general_reagents']
+]
+
+technical_pages = [
+    labels['database'],
+    labels['advanced_inventory'],
+    labels['settings']
+]
+
+# OPERATIONAL SECTION
+st.sidebar.markdown("---")
+st.sidebar.markdown("#### " + ("🔬 OPERATIONAL" if lang == 'en' else "🔬 OPERACIONAL"))
+
+for page_name in operational_pages:
+    if st.sidebar.button(
+        page_name,
+        key=f"nav_{page_name}",
+        use_container_width=True,
+        type="primary" if st.session_state['current_page'] == page_name else "secondary"
+    ):
+        st.session_state['current_page'] = page_name
+        st.rerun()
+
+# TECHNICAL SECTION
+st.sidebar.markdown("---")
+st.sidebar.markdown("#### " + ("⚙️ TECHNICAL" if lang == 'en' else "⚙️ TÉCNICO"))
+
+for page_name in technical_pages:
+    if st.sidebar.button(
+        page_name,
+        key=f"nav_{page_name}",
+        use_container_width=True,
+        type="primary" if st.session_state['current_page'] == page_name else "secondary"
+    ):
+        st.session_state['current_page'] = page_name
+        st.rerun()
+
+# Set default page if none selected
+if st.session_state['current_page'] is None:
+    st.session_state['current_page'] = labels['dashboard']
+
+page = st.session_state['current_page']
+
+st.title(dashboard_labels['title'])
 
 # -----------------------------
-# Base de datos viewer
+# Settings
 # -----------------------------
-if page == "Base de datos":
+if page == labels['settings']:
+    run_settings()
+    st.stop()
+
+# -----------------------------
+# Database viewer
+# -----------------------------
+if page == labels['database']:
     show_db_viewer()
     st.stop()
 
 # -----------------------------
-# Cargar datos
+# Load data (for pages that need it)
 # -----------------------------
 data = load_all()
 
@@ -80,56 +150,63 @@ inventory = build_inventory(
 )
 
 # -----------------------------
-# CRUD
+# Reagents (CRUD)
 # -----------------------------
-if page == "CRUD":
+if page == labels['reagents']:
     run_crud()
     st.stop()
 
 # -----------------------------
-# PANELES — SOLO VISUALIZACION
+# General Reagents (CRUD)
 # -----------------------------
-if page == "Paneles":
+if page == labels['general_reagents']:
+    run_general_reagents_crud()
+    st.stop()
+
+# -----------------------------
+# Panels (View/Edit)
+# -----------------------------
+if page == labels['panels']:
     show_panels(data)
     st.stop()
 
 # -----------------------------
-# PANEL BUILDER — CREACION
+# Panel Builder
 # -----------------------------
-if page == "Panel Builder":
+if page == labels['panel_builder']:
     create_panel()
     st.stop()
 
 # -----------------------------
-# CLINICAL SECTION
+# Clinical Section
 # -----------------------------
-if page == "🔬 Clinical":
+if page == labels['clinical']:
     run_clinical()
     st.stop()
 
 # -----------------------------
-# ECONOMIC SECTION
+# Economic Section
 # -----------------------------
-if page == "💰 Economic":
+if page == labels['economic']:
     run_economic()
     st.stop()
 
 # -----------------------------
-# Inventario avanzado
+# Advanced Inventory
 # -----------------------------
-if page == "Inventario Avanzado":
+if page == labels['advanced_inventory']:
     advanced_inventory_view(inventory)
     st.stop()
 
 # -----------------------------
 # DASHBOARD
 # -----------------------------
-if page == "Dashboard":
+if page == labels['dashboard']:
 
-    # 🔍 Búsqueda rápida
+    # Quick search
     query = st.text_input(
-        "Buscar en inventario...",
-        placeholder="cd3, b220, pb, biolegend..."
+        dashboard_labels['search_placeholder'].split('...')[0] + '...',
+        placeholder=dashboard_labels['search_placeholder'].split('...')[1] if '...' in dashboard_labels['search_placeholder'] else ''
     )
 
     # 🎛 Filtros
@@ -156,19 +233,20 @@ if page == "Dashboard":
     # -----------------------------
     col1, col2, col3, col4 = st.columns(4)
 
-    # Antibody metrics
+    # Antibody metrics with corrected terminology
     df_ab_all = inv[inv["item_type"] == "antibody"]
     n_ab_total = len(df_ab_all)
-    n_ab_open = (df_ab_all["status"].str.lower().isin(["stored", "in use"])).sum()
-    n_ab_closed = (df_ab_all["status"].str.lower() == "closed").sum()
+    n_ab_in_use = (df_ab_all["status"].str.lower() == "in use").sum()  # Currently being used
+    n_ab_stored = (df_ab_all["status"].str.lower() == "stored").sum()  # Not in active use
+    n_ab_closed = (df_ab_all["status"].str.lower() == "closed").sum()  # Finished/empty
 
     # General reagent metrics
     n_gen = (inv["item_type"] == "general_reagent").sum()
 
-    col1.metric("Total Antibodies", n_ab_total)
-    col2.metric("Open Vials", n_ab_open, help="Antibody vials available (Stored + In Use)")
-    col3.metric("Closed Vials", n_ab_closed)
-    col4.metric("General Reagents", n_gen)
+    col1.metric(dashboard_labels['total_antibodies'], n_ab_total)
+    col2.metric(dashboard_labels['in_use'], n_ab_in_use, help=dashboard_labels['in_use_help'])
+    col3.metric(dashboard_labels['stored'], n_ab_stored, help=dashboard_labels['stored_help'])
+    col4.metric(dashboard_labels['closed'], n_ab_closed, help=dashboard_labels['closed_help'])
 
     st.markdown("---")
 
