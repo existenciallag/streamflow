@@ -23,17 +23,22 @@ if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
     # sys._MEIPASS contains the bundled app files (app.py, ui/, utils/, …)
     APP_DIR = sys._MEIPASS
+    # On Windows the exe lives in Program Files (read-only for regular users).
+    # Store the database in %LOCALAPPDATA%\StreamFlow so any user can write it.
+    DATA_DIR = os.path.join(
+        os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+        "StreamFlow",
+    )
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     APP_DIR = BASE_DIR
+    DATA_DIR = BASE_DIR  # dev: keep db/ next to the source files
 
-# Change CWD to BASE_DIR so every relative path (db/inventory.db etc.) resolves
-# to the installation directory, not wherever the user launched from.
+# Change CWD to BASE_DIR so every relative path resolves to the install dir.
 os.chdir(BASE_DIR)
 
-# Pass the installation directory to the app so modules that build absolute
-# paths (models/loaders.py) can use it.
-os.environ["STREAMFLOW_BASE_DIR"] = BASE_DIR
+# Tell the app where to find the database (loaders.py reads this).
+os.environ["STREAMFLOW_BASE_DIR"] = DATA_DIR
 
 
 # ── Database bootstrap ─────────────────────────────────────────────────────────
@@ -41,7 +46,7 @@ def ensure_database():
     """Create db/inventory.db from schema.sql if it does not exist yet."""
     import sqlite3
 
-    db_dir = os.path.join(BASE_DIR, "db")
+    db_dir = os.path.join(DATA_DIR, "db")
     db_path = os.path.join(db_dir, "inventory.db")
     schema_path = os.path.join(APP_DIR, "schema.sql")
 
