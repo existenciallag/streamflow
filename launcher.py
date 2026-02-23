@@ -52,7 +52,23 @@ def ensure_database():
 
     os.makedirs(db_dir, exist_ok=True)
 
-    if not os.path.exists(db_path):
+    # Check if database exists and has tables
+    db_exists = os.path.exists(db_path)
+    has_tables = False
+
+    if db_exists:
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' LIMIT 1"
+            )
+            has_tables = cursor.fetchone() is not None
+            conn.close()
+        except Exception:
+            has_tables = False
+
+    # Apply schema if database is missing or empty
+    if not db_exists or not has_tables:
         if os.path.exists(schema_path):
             with open(schema_path, "r", encoding="utf-8") as f:
                 schema_sql = f.read()
