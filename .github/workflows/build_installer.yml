@@ -58,13 +58,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path db_placeholder | Out-Null
           Set-Content -Path db_placeholder\keep -Value ""
 
-      # 7. Install Inno Setup 6
+      # 7. Install Inno Setup 6 (using Chocolatey, pre-installed on windows-latest)
       - name: Install Inno Setup 6
-        run: |
-          $url = "https://files.jrsoftware.org/is/6/innosetup-6.3.3.exe"
-          $dest = "$env:TEMP\innosetup.exe"
-          Invoke-WebRequest -Uri $url -OutFile $dest
-          Start-Process -FilePath $dest -Args "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+        run: choco install innosetup --yes --no-progress
 
       # 8. Compile the installer with Inno Setup
       - name: Build installer (Inno Setup)
