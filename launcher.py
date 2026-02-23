@@ -116,6 +116,7 @@ def main():
         "--server.enableCORS=false",
         "--server.enableXsrfProtection=false",
         "--client.showErrorDetails=true",
+        "--global.developmentMode=false",
     ]
 
     from streamlit.web import cli as stcli
