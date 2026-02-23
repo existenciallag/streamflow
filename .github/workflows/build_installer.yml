@@ -1,0 +1,91 @@
+name: Build Windows Installer
+
+# ── When to run ───────────────────────────────────────────────────────────────
+on:
+  # Manual trigger from the GitHub Actions UI (Actions tab → Run workflow)
+  workflow_dispatch:
+
+  # Also build automatically on every push to main / master
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+
+# ── Job ───────────────────────────────────────────────────────────────────────
+jobs:
+  build:
+    # Real Windows Server 2022 — not emulated, not Wine
+    runs-on: windows-latest
+
+    steps:
+      # 1. Checkout source
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Set up Python 3.11 (same version your app uses)
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # 3. Install app dependencies + PyInstaller
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # 4. Build the application bundle with PyInstaller
+      - name: Build application bundle (PyInstaller)
+        run: pyinstaller streamflow.spec
+
+      # 5. Verify the bundle was created
+      - name: Verify bundle
+        run: |
+          if (!(Test-Path "dist\StreamFlow\StreamFlow.exe")) {
+            Write-Error "StreamFlow.exe not found in dist\StreamFlow\"
+            exit 1
+          }
+          Write-Host "Bundle OK — StreamFlow.exe found"
+          Get-ChildItem dist\StreamFlow\ | Measure-Object -Property Length -Sum |
+            ForEach-Object { Write-Host ("Bundle size: {0:N0} MB" -f ($_.Sum / 1MB)) }
+
+      # 6. Create the db placeholder directory Inno Setup expects
+      - name: Create db placeholder
+        run: |
+          New-Item -ItemType Directory -Force -Path db_placeholder | Out-Null
+          Set-Content -Path db_placeholder\keep -Value ""
+
+      # 7. Install Inno Setup 6
+      - name: Install Inno Setup 6
+        run: |
+          $url = "https://files.jrsoftware.org/is/6/innosetup-6.3.3.exe"
+          $dest = "$env:TEMP\innosetup.exe"
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          Start-Process -FilePath $dest -Args "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART" -Wait
+
+      # 8. Compile the installer with Inno Setup
+      - name: Build installer (Inno Setup)
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # 9. Upload the installer .exe as a downloadable artifact
+      #    Go to: Actions tab → click the workflow run → Artifacts section → Download
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamFlow_Windows_Installer
+          path: output\StreamFlow_Setup_v1.0.exe
+          retention-days: 90        # keep for 90 days
+
+      # 10. Also upload the raw bundle (useful for debugging)
+      - name: Upload raw bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: StreamFlow_Bundle_Raw
+          path: dist\StreamFlow\
+          retention-days: 14
