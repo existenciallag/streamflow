@@ -46,8 +46,7 @@ def ensure_database():
     """Create or upgrade db/inventory.db from schema.sql.
 
     - Fresh install: creates the database with all tables and seed data.
-    - Existing install: applies any missing tables (all CREATE TABLE statements
-      use IF NOT EXISTS, so existing tables and their data are untouched).
+    - Existing install: applies missing columns/tables then runs full schema.
     """
     import sqlite3
 
@@ -58,22 +57,109 @@ def ensure_database():
     os.makedirs(db_dir, exist_ok=True)
 
     if not os.path.exists(schema_path):
-        # schema.sql not bundled — create an empty file so the app can at
-        # least start and show a meaningful error per missing table.
         open(db_path, "w").close()
         return
 
-    with open(schema_path, "r", encoding="utf-8") as f:
-        schema_sql = f.read()
-
     conn = sqlite3.connect(db_path)
     try:
-        # Always run the schema. CREATE TABLE IF NOT EXISTS and INSERT OR IGNORE
-        # make this idempotent: existing tables and rows are never touched.
-        conn.executescript(schema_sql)
+        # For existing databases: add columns that were added in migrations.
+        # Ignore errors (column already exists = success).
+        _apply_column_migrations(conn)
+
+        # Now apply the full schema (tables, indexes, seed data).
+        # CREATE TABLE IF NOT EXISTS and INSERT OR IGNORE make this safe.
+        with open(schema_path, "r", encoding="utf-8") as f:
+            conn.executescript(f.read())
         conn.commit()
     finally:
         conn.close()
+
+
+def _apply_column_migrations(conn):
+    """Add columns from migrations 001-004 to existing tables.
+
+    Silently ignores errors (column already exists).
+    """
+    migrations = [
+        # Migration 001: cytometers
+        "ALTER TABLE cytometers ADD COLUMN is_default INTEGER DEFAULT 0",
+        "ALTER TABLE cytometers ADD COLUMN laser_configuration TEXT",
+        "ALTER TABLE cytometers ADD COLUMN detector_count INTEGER",
+        "ALTER TABLE cytometers ADD COLUMN status TEXT DEFAULT 'active'",
+        "ALTER TABLE cytometers ADD COLUMN installation_date TEXT",
+        "ALTER TABLE cytometers ADD COLUMN last_maintenance_date TEXT",
+        "ALTER TABLE cytometers ADD COLUMN next_maintenance_due TEXT",
+
+        # Migration 001: reagents
+        "ALTER TABLE reagents ADD COLUMN target_antigen TEXT",
+
+        # Migration 001: reagent_units
+        "ALTER TABLE reagent_units ADD COLUMN current_volume REAL",
+        "ALTER TABLE reagent_units ADD COLUMN opened_date TEXT",
+        "ALTER TABLE reagent_units ADD COLUMN closed_date TEXT",
+        "ALTER TABLE reagent_units ADD COLUMN qc_status TEXT DEFAULT 'pending'",
+        "ALTER TABLE reagent_units ADD COLUMN qc_date TEXT",
+        "ALTER TABLE reagent_units ADD COLUMN qc_notes TEXT",
+        "ALTER TABLE reagent_units ADD COLUMN storage_location TEXT",
+
+        # Migration 001: panels
+        "ALTER TABLE panels ADD COLUMN version TEXT DEFAULT '1.0.0'",
+        "ALTER TABLE panels ADD COLUMN parent_panel_id TEXT",
+        "ALTER TABLE panels ADD COLUMN version_notes TEXT",
+        "ALTER TABLE panels ADD COLUMN validated_at TEXT",
+        "ALTER TABLE panels ADD COLUMN validated_by TEXT",
+        "ALTER TABLE panels ADD COLUMN clinical_indication TEXT",
+        "ALTER TABLE panels ADD COLUMN sample_type TEXT",
+        "ALTER TABLE panels ADD COLUMN estimated_cost_per_test REAL",
+        "ALTER TABLE panels ADD COLUMN estimated_time_minutes INTEGER",
+        "ALTER TABLE panels ADD COLUMN updated_at TEXT",
+        "ALTER TABLE panels ADD COLUMN created_by TEXT",
+
+        # Migration 001: panel_reagents
+        "ALTER TABLE panel_reagents ADD COLUMN preferred_reagent_unit_id TEXT",
+        "ALTER TABLE panel_reagents ADD COLUMN channel_display_name TEXT",
+        "ALTER TABLE panel_reagents ADD COLUMN is_surface INTEGER DEFAULT 1",
+        "ALTER TABLE panel_reagents ADD COLUMN staining_step INTEGER DEFAULT 1",
+        "ALTER TABLE panel_reagents ADD COLUMN display_order INTEGER",
+        "ALTER TABLE panel_reagents ADD COLUMN unit_cost REAL",
+        "ALTER TABLE panel_reagents ADD COLUMN cost_per_test REAL",
+        "ALTER TABLE panel_reagents ADD COLUMN added_by TEXT",
+
+        # Migration 001: panel_general_reagents
+        "ALTER TABLE panel_general_reagents ADD COLUMN preferred_unit_id TEXT",
+        "ALTER TABLE panel_general_reagents ADD COLUMN usage_type TEXT",
+        "ALTER TABLE panel_general_reagents ADD COLUMN application_step INTEGER DEFAULT 1",
+        "ALTER TABLE panel_general_reagents ADD COLUMN is_required INTEGER DEFAULT 1",
+        "ALTER TABLE panel_general_reagents ADD COLUMN display_name TEXT",
+        "ALTER TABLE panel_general_reagents ADD COLUMN cost_per_test REAL",
+
+        # Migration 001: cytometer_optical_channels
+        "ALTER TABLE cytometer_optical_channels ADD COLUMN primary_fluorochrome TEXT",
+        "ALTER TABLE cytometer_optical_channels ADD COLUMN display_order INTEGER",
+        "ALTER TABLE cytometer_optical_channels ADD COLUMN is_scatter INTEGER DEFAULT 0",
+        "ALTER TABLE cytometer_optical_channels ADD COLUMN detector_type TEXT",
+        "ALTER TABLE cytometer_optical_channels ADD COLUMN laser_wavelength INTEGER",
+
+        # Migration 002: reagent_units
+        "ALTER TABLE reagent_units ADD COLUMN purchase_price REAL",
+        "ALTER TABLE reagent_units ADD COLUMN purchase_date TEXT",
+        "ALTER TABLE reagent_units ADD COLUMN supplier_id TEXT",
+        "ALTER TABLE reagent_units ADD COLUMN cost_per_ul REAL",
+
+        # Migration 002: reagents
+        "ALTER TABLE reagents ADD COLUMN catalog_price REAL",
+        "ALTER TABLE reagents ADD COLUMN catalog_volume REAL",
+
+        # Migration 003: general_reagent_units
+        "ALTER TABLE general_reagent_units ADD COLUMN arrival_date TEXT",
+    ]
+
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except sqlite3.OperationalError:
+            # Column already exists or table doesn't exist yet - both OK
+            pass
 
 
 # ── Port selection ─────────────────────────────────────────────────────────────
