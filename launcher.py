@@ -43,7 +43,12 @@ os.environ["STREAMFLOW_BASE_DIR"] = DATA_DIR
 
 # ── Database bootstrap ─────────────────────────────────────────────────────────
 def ensure_database():
-    """Create db/inventory.db from schema.sql if it does not exist yet."""
+    """Create or upgrade db/inventory.db from schema.sql.
+
+    - Fresh install: creates the database with all tables and seed data.
+    - Existing install: applies any missing tables (all CREATE TABLE statements
+      use IF NOT EXISTS, so existing tables and their data are untouched).
+    """
     import sqlite3
 
     db_dir = os.path.join(DATA_DIR, "db")
@@ -52,34 +57,23 @@ def ensure_database():
 
     os.makedirs(db_dir, exist_ok=True)
 
-    # Check if database exists and has tables
-    db_exists = os.path.exists(db_path)
-    has_tables = False
+    if not os.path.exists(schema_path):
+        # schema.sql not bundled — create an empty file so the app can at
+        # least start and show a meaningful error per missing table.
+        open(db_path, "w").close()
+        return
 
-    if db_exists:
-        try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' LIMIT 1"
-            )
-            has_tables = cursor.fetchone() is not None
-            conn.close()
-        except Exception:
-            has_tables = False
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema_sql = f.read()
 
-    # Apply schema if database is missing or empty
-    if not db_exists or not has_tables:
-        if os.path.exists(schema_path):
-            with open(schema_path, "r", encoding="utf-8") as f:
-                schema_sql = f.read()
-            conn = sqlite3.connect(db_path)
-            conn.executescript(schema_sql)
-            conn.commit()
-            conn.close()
-        else:
-            # schema.sql not found — create an empty file so the app can start
-            # and will report "no such table" for individual queries.
-            open(db_path, "w").close()
+    conn = sqlite3.connect(db_path)
+    try:
+        # Always run the schema. CREATE TABLE IF NOT EXISTS and INSERT OR IGNORE
+        # make this idempotent: existing tables and rows are never touched.
+        conn.executescript(schema_sql)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ── Port selection ─────────────────────────────────────────────────────────────
