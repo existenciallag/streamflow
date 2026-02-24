@@ -43,7 +43,12 @@ os.environ["STREAMFLOW_BASE_DIR"] = DATA_DIR
 
 # ── Database bootstrap ─────────────────────────────────────────────────────────
 def ensure_database():
-    """Create db/inventory.db from schema.sql if it does not exist yet."""
+    """Create or upgrade db/inventory.db from schema.sql.
+
+    - Fresh install: creates the database with all tables and seed data.
+    - Existing install: applies any missing tables (all CREATE TABLE statements
+      use IF NOT EXISTS, so existing tables and their data are untouched).
+    """
     import sqlite3
 
     db_dir = os.path.join(DATA_DIR, "db")
@@ -52,18 +57,23 @@ def ensure_database():
 
     os.makedirs(db_dir, exist_ok=True)
 
-    if not os.path.exists(db_path):
-        if os.path.exists(schema_path):
-            with open(schema_path, "r", encoding="utf-8") as f:
-                schema_sql = f.read()
-            conn = sqlite3.connect(db_path)
-            conn.executescript(schema_sql)
-            conn.commit()
-            conn.close()
-        else:
-            # schema.sql not found — create an empty file so the app can start
-            # and will report "no such table" for individual queries.
-            open(db_path, "w").close()
+    if not os.path.exists(schema_path):
+        # schema.sql not bundled — create an empty file so the app can at
+        # least start and show a meaningful error per missing table.
+        open(db_path, "w").close()
+        return
+
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema_sql = f.read()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        # Always run the schema. CREATE TABLE IF NOT EXISTS and INSERT OR IGNORE
+        # make this idempotent: existing tables and rows are never touched.
+        conn.executescript(schema_sql)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ── Port selection ─────────────────────────────────────────────────────────────
