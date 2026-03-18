@@ -15,6 +15,8 @@ import sqlite3
 import threading
 import time
 import webbrowser
+import csv
+from pathlib import Path
 
 
 # ── Resolve the installation directory ────────────────────────────────────────
@@ -70,6 +72,9 @@ def ensure_database():
         with open(schema_path, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
 
+        # Import seed data from CSV files (if tables are empty - first run).
+        _import_seed_data(conn)
+
         # Normalize legacy status values → three canonical statuses.
         _normalize_status_values(conn)
 
@@ -98,6 +103,92 @@ def _normalize_status_values(conn):
             """)
         except Exception:
             pass  # Table may not exist yet on first run
+
+
+def _import_seed_data(conn):
+    """Import seed data from CSV files on first run (if tables are empty).
+
+    CSV files are bundled in the data/ directory by PyInstaller.
+    """
+    # CSV files to import (in dependency order)
+    # Format: (table_name, csv_filename, expected_columns)
+    csv_imports = [
+        ("brands", "brands.csv"),
+        ("fluorochromes", "fluorochromes.csv"),
+        ("cytometers", "cytometers.csv"),
+        ("optical_channels", "optical_channels.csv"),
+        ("cytometer_optical_channels", "cytometer_optical_channels.csv"),
+        ("general_reagents", "general_reagents.csv"),
+        ("reagents", "reagents.csv"),
+        ("general_reagent_units", "general_reagents_units.csv"),  # Note: CSV has _s
+        ("reagent_units", "reagents_units.csv"),                  # Note: CSV has _s
+        ("panels", "panels.csv"),
+        ("panel_reagents", "panel_reagents.csv"),
+        ("panel_general_reagents", "panel_general_reagents.csv"),
+    ]
+
+    data_dir = Path(APP_DIR) / "data"
+    if not data_dir.exists():
+        return  # No CSV files bundled (dev mode without data/ dir)
+
+    cursor = conn.cursor()
+
+    for table_name, csv_filename in csv_imports:
+        # Check if table already has data
+        try:
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            count = cursor.fetchone()[0]
+            if count > 0:
+                continue  # Skip - table already populated
+        except sqlite3.OperationalError:
+            continue  # Table doesn't exist yet
+
+        # Import from CSV
+        csv_path = data_dir / csv_filename
+        if not csv_path.exists():
+            continue
+
+        try:
+            with open(csv_path, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+                if not rows:
+                    continue
+
+                # Get columns from CSV header
+                csv_cols = list(rows[0].keys())
+
+                # Get valid table columns
+                table_cols = _get_table_columns(cursor, table_name)
+
+                # Only use columns that exist in both CSV and table
+                valid_cols = [col for col in csv_cols if col in table_cols]
+
+                if not valid_cols:
+                    continue
+
+                # Build INSERT statement
+                placeholders = ", ".join(["?" for _ in valid_cols])
+                insert_sql = f"INSERT OR IGNORE INTO {table_name} ({', '.join(valid_cols)}) VALUES ({placeholders})"
+
+                # Insert all rows
+                for row in rows:
+                    values = [row.get(col, None) for col in valid_cols]
+                    cursor.execute(insert_sql, values)
+
+        except Exception:
+            # Skip errors and continue with other tables
+            pass
+
+
+def _get_table_columns(cursor, table_name):
+    """Get list of column names for a table."""
+    try:
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        return [row[1] for row in cursor.fetchall()]
+    except Exception:
+        return []
 
 
 def _apply_column_migrations(conn):

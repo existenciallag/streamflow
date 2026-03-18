@@ -26,6 +26,7 @@ app_datas = [
     ("utils",        "utils"),
     ("models",       "models"),
     (".streamlit",   ".streamlit"),
+    ("data",         "data"),          # CSV seed files (reagents, brands, etc.)
 ]
 
 all_datas = (
