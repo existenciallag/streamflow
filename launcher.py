@@ -11,6 +11,7 @@ Entry point for the packaged Windows application.
 import os
 import sys
 import socket
+import sqlite3
 import threading
 import time
 import webbrowser
@@ -48,8 +49,6 @@ def ensure_database():
     - Fresh install: creates the database with all tables and seed data.
     - Existing install: applies missing columns/tables then runs full schema.
     """
-    import sqlite3
-
     db_dir = os.path.join(DATA_DIR, "db")
     db_path = os.path.join(db_dir, "inventory.db")
     schema_path = os.path.join(APP_DIR, "schema.sql")
