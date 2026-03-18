@@ -62,10 +62,19 @@ def ensure_database():
 
     # FIRST RUN: Copy bundled template database (Windows installer)
     if not os.path.exists(db_path) and os.path.exists(template_db):
+        print(f"[StreamFlow] First run detected - copying template database...")
+        print(f"[StreamFlow] Template: {template_db}")
+        print(f"[StreamFlow] Target: {db_path}")
         shutil.copy2(template_db, db_path)
-        # Template is already complete - just normalize status and return
+
+        # Verify the copy was successful and has data
         conn = sqlite3.connect(db_path)
         try:
+            cur = conn.cursor()
+            reagent_count = cur.execute("SELECT COUNT(*) FROM reagents").fetchone()[0]
+            unit_count = cur.execute("SELECT COUNT(*) FROM reagent_units").fetchone()[0]
+            print(f"[StreamFlow] Database copied successfully: {reagent_count} reagents, {unit_count} units")
+
             _normalize_status_values(conn)
             conn.commit()
         finally:
@@ -74,7 +83,12 @@ def ensure_database():
 
     # FALLBACK: Create from schema.sql if no template and no existing DB
     if not os.path.exists(db_path):
+        print(f"[StreamFlow] Database not found at: {db_path}")
+        print(f"[StreamFlow] Template DB exists: {os.path.exists(template_db)}")
+        print(f"[StreamFlow] Falling back to schema.sql + CSV import...")
+
         if not os.path.exists(schema_path):
+            print(f"[StreamFlow] WARNING: schema.sql not found, creating empty database")
             open(db_path, "w").close()
             return
 
@@ -94,6 +108,15 @@ def ensure_database():
 
         # Normalize legacy status values → three canonical statuses.
         _normalize_status_values(conn)
+
+        # Verify database has data
+        try:
+            cur = conn.cursor()
+            reagent_count = cur.execute("SELECT COUNT(*) FROM reagents").fetchone()[0]
+            unit_count = cur.execute("SELECT COUNT(*) FROM reagent_units").fetchone()[0]
+            print(f"[StreamFlow] Database initialized: {reagent_count} reagents, {unit_count} units")
+        except Exception:
+            pass  # Tables may not exist yet
 
         conn.commit()
     finally:
