@@ -16,6 +16,7 @@ import threading
 import time
 import webbrowser
 import csv
+import shutil
 from pathlib import Path
 
 
@@ -46,20 +47,36 @@ os.environ["STREAMFLOW_BASE_DIR"] = DATA_DIR
 
 # ── Database bootstrap ─────────────────────────────────────────────────────────
 def ensure_database():
-    """Create or upgrade db/inventory.db from schema.sql.
+    """Create or upgrade db/inventory.db.
 
-    - Fresh install: creates the database with all tables and seed data.
-    - Existing install: applies missing columns/tables then runs full schema.
+    - Fresh install (Windows): copies bundled template database with all data.
+    - Dev mode (Codespaces): uses existing db/inventory.db directly.
+    - Fallback: creates from schema.sql + imports CSVs.
     """
     db_dir = os.path.join(DATA_DIR, "db")
     db_path = os.path.join(db_dir, "inventory.db")
     schema_path = os.path.join(APP_DIR, "schema.sql")
+    template_db = os.path.join(APP_DIR, "db_template", "inventory.db")
 
     os.makedirs(db_dir, exist_ok=True)
 
-    if not os.path.exists(schema_path):
-        open(db_path, "w").close()
+    # FIRST RUN: Copy bundled template database (Windows installer)
+    if not os.path.exists(db_path) and os.path.exists(template_db):
+        shutil.copy2(template_db, db_path)
+        # Template is already complete - just normalize status and return
+        conn = sqlite3.connect(db_path)
+        try:
+            _normalize_status_values(conn)
+            conn.commit()
+        finally:
+            conn.close()
         return
+
+    # FALLBACK: Create from schema.sql if no template and no existing DB
+    if not os.path.exists(db_path):
+        if not os.path.exists(schema_path):
+            open(db_path, "w").close()
+            return
 
     conn = sqlite3.connect(db_path)
     try:
