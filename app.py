@@ -238,7 +238,7 @@ if page == labels['dashboard']:
     n_ab_total = len(df_ab_all)
     n_ab_in_use = (df_ab_all["status"].str.lower() == "in use").sum()  # Currently being used
     n_ab_stored = (df_ab_all["status"].str.lower() == "stored").sum()  # Not in active use
-    n_ab_closed = (df_ab_all["status"].str.lower() == "closed").sum()  # Finished/empty
+    n_ab_empty = (df_ab_all["status"].str.lower() == "empty").sum()  # Finished/empty
 
     # General reagent metrics
     n_gen = (inv["item_type"] == "general_reagent").sum()
@@ -246,7 +246,7 @@ if page == labels['dashboard']:
     col1.metric(dashboard_labels['total_antibodies'], n_ab_total)
     col2.metric(dashboard_labels['in_use'], n_ab_in_use, help=dashboard_labels['in_use_help'])
     col3.metric(dashboard_labels['stored'], n_ab_stored, help=dashboard_labels['stored_help'])
-    col4.metric(dashboard_labels['closed'], n_ab_closed, help=dashboard_labels['closed_help'])
+    col4.metric(dashboard_labels['empty'], n_ab_empty, help=dashboard_labels['empty_help'])
 
     st.markdown("---")
 

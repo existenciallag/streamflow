@@ -70,9 +70,35 @@ def ensure_database():
         # CREATE TABLE IF NOT EXISTS and INSERT OR IGNORE make this safe.
         with open(schema_path, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
+
+        # Normalize legacy status values → three canonical statuses.
+        _normalize_status_values(conn)
+
         conn.commit()
     finally:
         conn.close()
+
+
+def _normalize_status_values(conn):
+    """Convert legacy status values to the canonical three: Stored, In Use, Empty.
+
+    Discarded, Closed, closed, discarded → Empty
+    In Use / Stored are kept as-is (case-normalised to title case).
+    """
+    for table in ("reagent_units", "general_reagent_units"):
+        try:
+            conn.execute(f"""
+                UPDATE {table}
+                SET status = CASE
+                    WHEN LOWER(status) IN ('closed', 'discarded', 'expired', 'wasted') THEN 'Empty'
+                    WHEN LOWER(status) = 'in use'  THEN 'In Use'
+                    WHEN LOWER(status) = 'stored'  THEN 'Stored'
+                    ELSE 'Empty'
+                END
+                WHERE LOWER(status) NOT IN ('in use', 'stored', 'empty')
+            """)
+        except Exception:
+            pass  # Table may not exist yet on first run
 
 
 def _apply_column_migrations(conn):

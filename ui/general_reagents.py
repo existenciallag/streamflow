@@ -9,7 +9,7 @@ from models.loaders import DB_PATH
 #                        DB HELPERS
 # ============================================================
 
-STATUS_VALUES = ["Stored", "In Use", "Closed"]
+STATUS_VALUES = ["Stored", "In Use", "Empty"]
 
 
 def generate_id():

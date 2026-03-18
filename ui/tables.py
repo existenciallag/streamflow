@@ -10,7 +10,7 @@ def status_style(val):
         return "background-color: rgba(85,107,47,0.3); color: black"
     elif val_lower == "stored":
         return "background-color: rgba(25,25,112,0.3); color: white"
-    elif val_lower == "closed":
+    elif val_lower == "empty":
         return "background-color: rgba(105,105,105,0.3); color: white"
     else:
         return "background-color: rgba(105,105,105,0.3); color: white"
