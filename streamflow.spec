@@ -26,6 +26,8 @@ app_datas = [
     ("utils",        "utils"),
     ("models",       "models"),
     (".streamlit",   ".streamlit"),
+    ("data",         "data"),          # CSV seed files (fallback)
+    ("db/inventory.db", "db_template"), # Template database with all data
 ]
 
 all_datas = (
