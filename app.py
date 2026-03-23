@@ -27,8 +27,7 @@ from utils.dashboard_metrics import (
 from ui.panels import show_panels
 from ui.panel_builder import create_panel  # <-- Panel Builder
 
-# 👉 NEW: Clinical & Economic sections
-from ui.clinical import run_clinical
+# 👉 NEW: Economic section
 from ui.economic import run_economic
 from ui.settings import run_settings
 from ui.general_reagents import run_general_reagents_crud
@@ -44,7 +43,7 @@ st.set_page_config(
 # -----------------------------
 # Language support
 # -----------------------------
-from utils.translations import NAV, DASHBOARD, CLINICAL, PANELS, SETTINGS, COMMON
+from utils.translations import NAV, DASHBOARD, PANELS, SETTINGS, COMMON
 
 if 'language' not in st.session_state:
     st.session_state['language'] = 'en'  # Default to English
@@ -54,7 +53,6 @@ lang = st.session_state['language']
 # Get translated labels
 labels = NAV[lang]
 dashboard_labels = DASHBOARD[lang]
-clinical_labels = CLINICAL[lang]
 panels_labels = PANELS[lang]
 settings_labels = SETTINGS[lang]
 common_labels = COMMON[lang]
@@ -73,7 +71,6 @@ operational_pages = [
     labels['dashboard'],
     labels['panels'],
     labels['panel_builder'],
-    labels['clinical'],
     labels['economic'],
     labels['reagents'],
     labels['general_reagents']
@@ -175,13 +172,6 @@ if page == labels['panels']:
 # -----------------------------
 if page == labels['panel_builder']:
     create_panel()
-    st.stop()
-
-# -----------------------------
-# Clinical Section
-# -----------------------------
-if page == labels['clinical']:
-    run_clinical()
     st.stop()
 
 # -----------------------------
