@@ -61,25 +61,52 @@ def ensure_database():
     os.makedirs(db_dir, exist_ok=True)
 
     # FIRST RUN: Copy bundled template database (Windows installer)
-    if not os.path.exists(db_path) and os.path.exists(template_db):
-        print(f"[StreamFlow] First run detected - copying template database...")
-        print(f"[StreamFlow] Template: {template_db}")
-        print(f"[StreamFlow] Target: {db_path}")
-        shutil.copy2(template_db, db_path)
+    if not os.path.exists(db_path):
+        if os.path.exists(template_db):
+            print(f"[StreamFlow] First run detected - copying template database...")
+            print(f"[StreamFlow] Template: {template_db}")
+            print(f"[StreamFlow] Template size: {os.path.getsize(template_db) / 1024:.1f} KB")
+            print(f"[StreamFlow] Target: {db_path}")
 
-        # Verify the copy was successful and has data
-        conn = sqlite3.connect(db_path)
-        try:
-            cur = conn.cursor()
-            reagent_count = cur.execute("SELECT COUNT(*) FROM reagents").fetchone()[0]
-            unit_count = cur.execute("SELECT COUNT(*) FROM reagent_units").fetchone()[0]
-            print(f"[StreamFlow] Database copied successfully: {reagent_count} reagents, {unit_count} units")
+            try:
+                shutil.copy2(template_db, db_path)
+                print(f"[StreamFlow] File copied. Verifying...")
 
-            _normalize_status_values(conn)
-            conn.commit()
-        finally:
-            conn.close()
-        return
+                # Verify the copy was successful and has data
+                conn = sqlite3.connect(db_path)
+                try:
+                    cur = conn.cursor()
+
+                    # Check if tables exist
+                    tables = cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                    print(f"[StreamFlow] Database has {len(tables)} tables")
+
+                    reagent_count = cur.execute("SELECT COUNT(*) FROM reagents").fetchone()[0]
+                    unit_count = cur.execute("SELECT COUNT(*) FROM reagent_units").fetchone()[0]
+                    print(f"[StreamFlow] ✅ Database copied successfully!")
+                    print(f"[StreamFlow]    - {reagent_count} reagents")
+                    print(f"[StreamFlow]    - {unit_count} units")
+
+                    _normalize_status_values(conn)
+                    conn.commit()
+                finally:
+                    conn.close()
+                return
+            except Exception as e:
+                print(f"[StreamFlow] ❌ Error copying template: {e}")
+                print(f"[StreamFlow] Falling back to CSV import...")
+                # Remove failed DB and continue to fallback
+                if os.path.exists(db_path):
+                    os.remove(db_path)
+        else:
+            print(f"[StreamFlow] Template database not found at: {template_db}")
+            print(f"[StreamFlow] Checking bundled files...")
+            print(f"[StreamFlow] APP_DIR: {APP_DIR}")
+            if os.path.exists(APP_DIR):
+                print(f"[StreamFlow] APP_DIR contents:")
+                for item in os.listdir(APP_DIR):
+                    print(f"[StreamFlow]   - {item}")
+            print(f"[StreamFlow] Falling back to CSV import...")
 
     # FALLBACK: Create from schema.sql if no template and no existing DB
     if not os.path.exists(db_path):
@@ -150,6 +177,8 @@ def _import_seed_data(conn):
 
     CSV files are bundled in the data/ directory by PyInstaller.
     """
+    print(f"[StreamFlow] Checking for CSV seed data...")
+
     # CSV files to import (in dependency order)
     # Format: (table_name, csv_filename, expected_columns)
     csv_imports = [
@@ -169,8 +198,10 @@ def _import_seed_data(conn):
 
     data_dir = Path(APP_DIR) / "data"
     if not data_dir.exists():
+        print(f"[StreamFlow] No data/ directory found at: {data_dir}")
         return  # No CSV files bundled (dev mode without data/ dir)
 
+    print(f"[StreamFlow] Found data directory: {data_dir}")
     cursor = conn.cursor()
 
     for table_name, csv_filename in csv_imports:
@@ -179,13 +210,16 @@ def _import_seed_data(conn):
             cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
             count = cursor.fetchone()[0]
             if count > 0:
+                print(f"[StreamFlow]   {table_name}: skipping (already has {count} rows)")
                 continue  # Skip - table already populated
         except sqlite3.OperationalError:
+            print(f"[StreamFlow]   {table_name}: table doesn't exist yet, skipping")
             continue  # Table doesn't exist yet
 
         # Import from CSV
         csv_path = data_dir / csv_filename
         if not csv_path.exists():
+            print(f"[StreamFlow]   {table_name}: CSV not found ({csv_filename})")
             continue
 
         try:
@@ -194,6 +228,7 @@ def _import_seed_data(conn):
                 rows = list(reader)
 
                 if not rows:
+                    print(f"[StreamFlow]   {table_name}: CSV is empty")
                     continue
 
                 # Get columns from CSV header
@@ -206,6 +241,7 @@ def _import_seed_data(conn):
                 valid_cols = [col for col in csv_cols if col in table_cols]
 
                 if not valid_cols:
+                    print(f"[StreamFlow]   {table_name}: no matching columns between CSV and table")
                     continue
 
                 # Build INSERT statement
@@ -213,12 +249,18 @@ def _import_seed_data(conn):
                 insert_sql = f"INSERT OR IGNORE INTO {table_name} ({', '.join(valid_cols)}) VALUES ({placeholders})"
 
                 # Insert all rows
+                inserted = 0
                 for row in rows:
                     values = [row.get(col, None) for col in valid_cols]
                     cursor.execute(insert_sql, values)
+                    if cursor.rowcount > 0:
+                        inserted += 1
 
-        except Exception:
+                print(f"[StreamFlow]   {table_name}: ✅ imported {inserted}/{len(rows)} rows")
+
+        except Exception as e:
             # Skip errors and continue with other tables
+            print(f"[StreamFlow]   {table_name}: ❌ error importing - {e}")
             pass
 
 

@@ -329,8 +329,8 @@ def run_economic():
                 gr.name as reagent_name,
                 gr.type as reagent_type,
                 b.name as brand,
-                pgr.consumption_type,
-                SUM(pgr.consumption_amount * COALESCE(pul.tests_count, 1)) as total_consumed,
+                pgr.usage_type as consumption_type,
+                SUM(pgr.volume_used * COALESCE(pul.tests_count, 1)) as total_consumed,
                 SUM(pgr.cost_per_test * COALESCE(pul.tests_count, 1)) as total_cost,
                 COUNT(DISTINCT pgr.panel_id) as panel_count,
                 SUM(COALESCE(pul.tests_count, 1)) as total_tests
@@ -340,7 +340,7 @@ def run_economic():
             JOIN panels p ON p.id = pgr.panel_id
             JOIN panel_usage_log pul ON pul.panel_id = p.id
             WHERE pul.execution_date BETWEEN ? AND ?
-            GROUP BY gr.id, gr.name, gr.type, b.name, pgr.consumption_type
+            GROUP BY gr.id, gr.name, gr.type, b.name, pgr.usage_type
             ORDER BY total_cost DESC
             LIMIT 10
         """, (str(start_date), str(end_date)))
