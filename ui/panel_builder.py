@@ -743,11 +743,11 @@ def load_existing_panel_for_editing(panel_id):
         SELECT
             pgr.general_reagent_id,
             gr.name as general_reagent_name,
-            pgr.general_reagent_unit_id,
-            pgr.consumption_type,
-            pgr.consumption_amount,
-            pgr.unit_price,
-            pgr.total_volume_or_units,
+            pgr.preferred_unit_id as general_reagent_unit_id,
+            pgr.usage_type as consumption_type,
+            pgr.volume_used as consumption_amount,
+            NULL as unit_price,
+            pgr.volume_used as total_volume_or_units,
             pgr.cost_per_test,
             pgr.display_name
         FROM panel_general_reagents pgr

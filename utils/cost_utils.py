@@ -26,10 +26,10 @@ def calculate_general_reagent_cost_dynamic(panel_id):
         SELECT
             pgr.id as assignment_id,
             pgr.general_reagent_id,
-            pgr.consumption_type,
-            pgr.consumption_amount,
+            pgr.usage_type as consumption_type,
+            pgr.volume_used as consumption_amount,
             pgr.display_name,
-            pgr.general_reagent_unit_id,
+            pgr.preferred_unit_id as general_reagent_unit_id,
             gr.name as reagent_name,
             gr.price as current_price,
             gr.standard_volume,
