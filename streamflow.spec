@@ -28,7 +28,7 @@ app_datas = [
     (".streamlit",   ".streamlit"),
     ("data",         "data"),          # CSV seed files (fallback)
     ("db/inventory.db", "db_template"), # Template database with all data
-    ("verify_bundle.py", "."),         # Diagnostic script
+    ("tools/verify_bundle.py", "tools"), # Diagnostic script
 ]
 
 all_datas = (
