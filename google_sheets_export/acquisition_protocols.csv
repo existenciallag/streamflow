@@ -1,0 +1,2 @@
+id,name,cytometer_id,status,version,notes,validated_at,validated_by,created_at,updated_at,team_id
+74ab0b74-3d1e-4985-9934-cd6af6364422,Standard Acquisition CytoFLEX,2c30d199-bd7f-4f33-ad14-05be2a14da2e,validated,1.0.0,"Standard acquisition settings: Medium flow rate, 100k events, FSC threshold 5000",,,2026-01-23T16:50:57.622218,,
