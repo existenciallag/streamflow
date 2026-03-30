@@ -7,12 +7,16 @@ from pathlib import Path
 
 # Resolve DB path robustly:
 # - When packaged (launcher.py sets STREAMFLOW_BASE_DIR), use that directory.
-# - Otherwise fall back to the classic relative path (dev environment).
+# - Otherwise fall back to database.db in root (dev environment).
 _base = os.environ.get("STREAMFLOW_BASE_DIR", "")
 if _base:
     DB_PATH = Path(_base) / "db" / "inventory.db"
 else:
-    DB_PATH = Path("db/inventory.db")
+    # First try database.db in root, then fall back to db/inventory.db
+    if Path("database.db").exists():
+        DB_PATH = Path("database.db")
+    else:
+        DB_PATH = Path("db/inventory.db")
 
 
 def _get_db_mtime():

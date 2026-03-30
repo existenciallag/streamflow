@@ -204,51 +204,66 @@ def run_crud():
 
         # ---------- EDITAR ANTICUERPO ----------
 
-        with st.expander("✏️ Editar Información del Anticuerpo", expanded=False):
-            with st.form("edit_reagent"):
+        col_edit, col_del = st.columns([4, 1])
 
-                c1, c2 = st.columns(2)
+        with col_edit:
+            with st.expander("✏️ Editar Información del Anticuerpo", expanded=False):
+                with st.form("edit_reagent"):
 
-                with c1:
-                    st.markdown("**Identificación**")
-                    name = st.text_input("CD", r["name"])
-                    clone = st.text_input("Clon", r["clone"])
-                    catalog = st.text_input("Catálogo", r["catalog_number"])
+                    c1, c2 = st.columns(2)
 
-                with c2:
-                    st.markdown("**Proveedor y especificaciones**")
-                    fluorochrome = st.selectbox(
-                        "Fluorocromo",
-                        fluoros["id"],
-                        index=list(fluoros["id"]).index(r["fluorochrome"]),
-                        format_func=lambda x: fluoro_map.get(x, x)
-                    )
+                    with c1:
+                        st.markdown("**Identificación**")
+                        name = st.text_input("CD", r["name"])
+                        clone = st.text_input("Clon", r["clone"] or "")
+                        catalog = st.text_input("Catálogo", r["catalog_number"] or "")
 
-                    brand_id = st.selectbox(
-                        "Marca",
-                        brands["id"],
-                        index=list(brands["id"]).index(r["brand_id"]),
-                        format_func=lambda x: brand_map.get(x, x)
-                    )
+                    with c2:
+                        st.markdown("**Proveedor y especificaciones**")
+                        fluorochrome = st.selectbox(
+                            "Fluorocromo",
+                            fluoros["id"],
+                            index=list(fluoros["id"]).index(r["fluorochrome"]) if r["fluorochrome"] in list(fluoros["id"]) else 0,
+                            format_func=lambda x: fluoro_map.get(x, x)
+                        )
 
-                    price = st.number_input(
-                        "Precio referencia ($)",
-                        value=float(r["price"] or 0),
-                        step=10.0
-                    )
+                        brand_id = st.selectbox(
+                            "Marca",
+                            brands["id"],
+                            index=list(brands["id"]).index(r["brand_id"]) if r["brand_id"] in list(brands["id"]) else 0,
+                            format_func=lambda x: brand_map.get(x, x)
+                        )
 
-                st.markdown("")  # Spacing
-                if st.form_submit_button("✓ Guardar Cambios", use_container_width=True):
+                        price = st.number_input(
+                            "Precio referencia ($)",
+                            value=float(r["price"] or 0),
+                            step=10.0
+                        )
 
-                    update_db("reagents", {
-                        "name": name,
-                        "clone": clone,
-                        "catalog_number": catalog,
-                        "fluorochrome": fluorochrome,
-                        "brand_id": brand_id,
-                        "price": price
-                    }, r["id"])
+                    st.markdown("")  # Spacing
+                    if st.form_submit_button("✓ Guardar Cambios", use_container_width=True):
 
+                        update_db("reagents", {
+                            "name": name,
+                            "clone": clone,
+                            "catalog_number": catalog,
+                            "fluorochrome": fluorochrome,
+                            "brand_id": brand_id,
+                            "price": price
+                        }, r["id"])
+
+                        st.rerun()
+
+        with col_del:
+            with st.expander("🗑️ Eliminar", expanded=False):
+                st.warning("⚠️ Esto eliminará el anticuerpo y todos sus viales")
+                if st.button("Confirmar Eliminación", type="primary", use_container_width=True):
+                    # Delete all units first
+                    for unit_id in r_units["id"]:
+                        delete_db("reagent_units", unit_id)
+                    # Delete the reagent
+                    delete_db("reagents", r["id"])
+                    st.success("Anticuerpo eliminado")
                     st.rerun()
 
         st.markdown("")  # Spacing
@@ -367,6 +382,15 @@ def run_crud():
                         }, u["id"])
 
                         st.rerun()
+
+                st.markdown("")  # Spacing
+
+                # -------- ELIMINAR VIAL --------
+
+                if st.button("🗑️ Eliminar Vial", type="secondary", use_container_width=True):
+                    delete_db("reagent_units", u["id"])
+                    st.success("Vial eliminado")
+                    st.rerun()
 
                 st.markdown("")  # Spacing
 

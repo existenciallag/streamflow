@@ -154,18 +154,6 @@ def run_general_reagents_crud():
                     price = st.number_input("Precio referencia ($)", 0.0, step=10.0)
 
                 st.markdown("")  # Spacing
-                st.markdown("**Volumen/Unidades estándar**")
-                st.caption("Define el volumen o cantidad estándar por unidad (ej: 500mL para buffers, 100 unidades para tubos)")
-
-                col_v1, col_v2 = st.columns(2)
-                with col_v1:
-                    standard_volume = st.number_input("Volumen estándar (mL)", 0.0, step=10.0,
-                                                     help="Para líquidos: volumen por botella/unidad")
-                with col_v2:
-                    standard_units = st.number_input("Unidades estándar por paquete", 0.0, step=1.0,
-                                                    help="Para items discretos: cantidad por caja/paquete")
-
-                st.markdown("")  # Spacing
                 notes = st.text_area("Notas", placeholder="Notas adicionales sobre este reactivo")
 
                 st.markdown("")  # Spacing
@@ -180,8 +168,6 @@ def run_general_reagents_crud():
                             "concentration": concentration,
                             "brand_id": brand_id,
                             "price": price,
-                            "standard_volume": standard_volume if standard_volume > 0 else None,
-                            "standard_units": standard_units if standard_units > 0 else None,
                             "notes": notes,
                             "created_at": pd.Timestamp.now().isoformat()
                         })
@@ -209,57 +195,61 @@ def run_general_reagents_crud():
 
         # ---------- EDITAR REACTIVO GENERAL ----------
 
-        with st.expander("✏️ Editar Información del Reactivo", expanded=False):
-            with st.form("edit_general_reagent"):
+        col_edit, col_del = st.columns([4, 1])
 
-                c1, c2 = st.columns(2)
+        with col_edit:
+            with st.expander("✏️ Editar Información del Reactivo", expanded=False):
+                with st.form("edit_general_reagent"):
 
-                with c1:
-                    st.markdown("**Identificación**")
-                    name = st.text_input("Nombre", r["name"])
-                    reagent_type = st.text_input("Tipo", r["type"] or "")
-                    concentration = st.text_input("Concentración", r["concentration"] or "")
+                    c1, c2 = st.columns(2)
 
-                with c2:
-                    st.markdown("**Proveedor y precio**")
-                    brand_id = st.selectbox(
-                        "Marca",
-                        brands["id"],
-                        index=list(brands["id"]).index(r["brand_id"]) if r["brand_id"] in list(brands["id"]) else 0,
-                        format_func=lambda x: brand_map.get(x, x)
-                    )
+                    with c1:
+                        st.markdown("**Identificación**")
+                        name = st.text_input("Nombre", r["name"])
+                        reagent_type = st.text_input("Tipo", r["type"] or "")
+                        concentration = st.text_input("Concentración", r["concentration"] or "")
 
-                    price = st.number_input(
-                        "Precio referencia ($)",
-                        value=float(r["price"] or 0),
-                        step=10.0
-                    )
+                    with c2:
+                        st.markdown("**Proveedor y precio**")
+                        brand_id = st.selectbox(
+                            "Marca",
+                            brands["id"],
+                            index=list(brands["id"]).index(r["brand_id"]) if r["brand_id"] in list(brands["id"]) else 0,
+                            format_func=lambda x: brand_map.get(x, x)
+                        )
 
-                st.markdown("**Volumen/Unidades estándar**")
-                col_v1, col_v2 = st.columns(2)
-                with col_v1:
-                    standard_volume = st.number_input("Volumen estándar (mL)", value=float(r.get("standard_volume") or 0), step=10.0,
-                                                     help="Para líquidos: volumen por botella/unidad")
-                with col_v2:
-                    standard_units = st.number_input("Unidades estándar por paquete", value=float(r.get("standard_units") or 0), step=1.0,
-                                                    help="Para items discretos: cantidad por caja/paquete")
+                        price = st.number_input(
+                            "Precio referencia ($)",
+                            value=float(r["price"] or 0),
+                            step=10.0
+                        )
 
-                notes = st.text_area("Notas", r["notes"] or "")
+                    notes = st.text_area("Notas", r["notes"] or "")
 
-                st.markdown("")  # Spacing
-                if st.form_submit_button("✓ Guardar Cambios", use_container_width=True):
+                    st.markdown("")  # Spacing
+                    if st.form_submit_button("✓ Guardar Cambios", use_container_width=True):
 
-                    update_db("general_reagents", {
-                        "name": name,
-                        "type": reagent_type,
-                        "concentration": concentration,
-                        "brand_id": brand_id,
-                        "price": price,
-                        "standard_volume": standard_volume if standard_volume > 0 else None,
-                        "standard_units": standard_units if standard_units > 0 else None,
-                        "notes": notes
-                    }, r["id"])
+                        update_db("general_reagents", {
+                            "name": name,
+                            "type": reagent_type,
+                            "concentration": concentration,
+                            "brand_id": brand_id,
+                            "price": price,
+                            "notes": notes
+                        }, r["id"])
 
+                        st.rerun()
+
+        with col_del:
+            with st.expander("🗑️ Eliminar", expanded=False):
+                st.warning("⚠️ Esto eliminará el reactivo y todas sus unidades")
+                if st.button("Confirmar Eliminación", type="primary", use_container_width=True):
+                    # Delete all units first
+                    for unit_id in r_units["id"]:
+                        delete_db("general_reagent_units", unit_id)
+                    # Delete the reagent
+                    delete_db("general_reagents", r["id"])
+                    st.success("Reactivo eliminado")
                     st.rerun()
 
         st.markdown("")  # Spacing
@@ -388,6 +378,15 @@ def run_general_reagents_crud():
                         }, u["id"])
 
                         st.rerun()
+
+                st.markdown("")  # Spacing
+
+                # -------- ELIMINAR UNIDAD --------
+
+                if st.button("🗑️ Eliminar Unidad", type="secondary", use_container_width=True):
+                    delete_db("general_reagent_units", u["id"])
+                    st.success("Unidad eliminada")
+                    st.rerun()
 
                 st.markdown("")  # Spacing
 
