@@ -1,0 +1,6 @@
+id,name,description,code,display_order,created_at
+area-oncohem,Oncohematology,Hematological malignancies and disorders,ONCOHEM,1,2026-01-27 13:51:53
+area-immuno,Immunology,Immunological disorders and autoimmune diseases,IMMUNO,2,2026-01-27 13:51:53
+area-fertility,Fertility,Reproductive health and fertility assessment,FERT,3,2026-01-27 13:51:53
+area-transplant,Transplant,Pre and post-transplant monitoring,TXPLNT,4,2026-01-27 13:51:53
+area-research,Research,Research and experimental protocols,RSCH,5,2026-01-27 13:51:53

@@ -1,0 +1,2 @@
+id,name,manufacturer,model,serial_number,created_at,team_id,is_default,laser_configuration,detector_count,status,installation_date,last_maintenance_date,next_maintenance_due
+2c30d199-bd7f-4f33-ad14-05be2a14da2e,Cytoflex,Beckman Coulter,S,,2025-03-15T02:35:42,7c68fc97-7bd0-4cea-aedd-dd84ff8c4ea7,1,"3-laser (405nm, 488nm, 638nm)",13,active,,,

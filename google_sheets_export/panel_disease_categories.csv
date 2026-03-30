@@ -1,0 +1,9 @@
+id,area_id,name,description,icd_code,requires_patient_tracking,created_at
+disease-aml,area-oncohem,Acute Myeloid Leukemia,AML and related precursor neoplasms,C92.0,1,2026-01-27 13:51:53
+disease-all,area-oncohem,Acute Lymphoblastic Leukemia,B-ALL and T-ALL,C91.0,1,2026-01-27 13:51:53
+disease-cll,area-oncohem,Chronic Lymphocytic Leukemia,CLL and related B-cell disorders,C91.1,1,2026-01-27 13:51:53
+disease-myeloma,area-oncohem,Multiple Myeloma,Plasma cell neoplasms,C90.0,1,2026-01-27 13:51:53
+disease-lymphoma,area-oncohem,Lymphoma,Hodgkin and Non-Hodgkin lymphomas,C85,1,2026-01-27 13:51:53
+disease-mds,area-oncohem,Myelodysplastic Syndrome,MDS and related disorders,D46,1,2026-01-27 13:51:53
+disease-autoimmune,area-immuno,Autoimmune Disorders,General autoimmune disease screening,,0,2026-01-27 13:51:53
+disease-immunodeficiency,area-immuno,Immunodeficiency,Primary and secondary immunodeficiencies,,0,2026-01-27 13:51:53

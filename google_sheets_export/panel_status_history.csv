@@ -1,0 +1,36 @@
+id,panel_id,from_status,to_status,changed_at,changed_by,reason
+status-83750645-7216-4955-bc28-a0e4ac92fffb-initial,83750645-7216-4955-bc28-a0e4ac92fffb,,active,2025-12-11T10:36:48,,Initial status from migration
+status-0e022541-eafa-470c-8812-6d3443436239-initial,0e022541-eafa-470c-8812-6d3443436239,,active,2026-01-27 13:51:53,,Initial status from migration
+status-20c4a180-d79f-46dd-aa04-84c16e18c726-initial,20c4a180-d79f-46dd-aa04-84c16e18c726,,active,2026-01-27 13:51:53,,Initial status from migration
+status-e00aff8f-6511-4dc2-a8eb-664ff5a97210-initial,e00aff8f-6511-4dc2-a8eb-664ff5a97210,,active,2026-01-27 13:51:53,,Initial status from migration
+status-231cb1ef-f88d-4ad7-9558-683b4b7c3ad7-initial,231cb1ef-f88d-4ad7-9558-683b4b7c3ad7,,active,2026-01-27 13:51:53,,Initial status from migration
+status-2b82f862-6492-4fc3-9acc-8ce6bb8552bf-initial,2b82f862-6492-4fc3-9acc-8ce6bb8552bf,,active,2025-12-11T07:43:36,,Initial status from migration
+status-6a5f599e-70e7-4214-96b6-eb17d54798ed-initial,6a5f599e-70e7-4214-96b6-eb17d54798ed,,active,2025-12-11T04:09:54,,Initial status from migration
+status-993db7a3-23e8-4c09-925c-0dfb66c6cab0-initial,993db7a3-23e8-4c09-925c-0dfb66c6cab0,,active,2025-12-11T06:15:48,,Initial status from migration
+status-179f9535-a799-4ac5-9959-a0efa0ba672c-initial,179f9535-a799-4ac5-9959-a0efa0ba672c,,active,2025-12-11T09:04:48,,Initial status from migration
+status-f52afbb7-2c99-427d-9f0e-376dda0c5385-initial,f52afbb7-2c99-427d-9f0e-376dda0c5385,,active,2025-12-11T13:12:54,,Initial status from migration
+status-17283b0d-e299-4550-bc51-fdc458893099-initial,17283b0d-e299-4550-bc51-fdc458893099,,active,2025-12-11T15:15:00,,Initial status from migration
+status-abe550b8-86e1-476f-b25f-09ce71b907e3-initial,abe550b8-86e1-476f-b25f-09ce71b907e3,,active,2025-12-11T17:07:48,,Initial status from migration
+status-6a6a9ecc-4897-4ba5-8a2b-4ffd30c6420e-initial,6a6a9ecc-4897-4ba5-8a2b-4ffd30c6420e,,active,2026-01-27 13:51:53,,Initial status from migration
+status-ddf288b9-c421-4a80-aa80-4b4504b70ef4-initial,ddf288b9-c421-4a80-aa80-4b4504b70ef4,,active,2025-12-11T17:48:06,,Initial status from migration
+status-812cc865-a2ec-4314-bed4-45e0ca83bc59-initial,812cc865-a2ec-4314-bed4-45e0ca83bc59,,draft,2026-01-06T19:13:07.847087,,Initial status from migration
+status-1a23fc61-759b-4460-9f00-bb9ed3eb119c-initial,1a23fc61-759b-4460-9f00-bb9ed3eb119c,,draft,2026-01-06T19:13:17.820508,,Initial status from migration
+status-6c4aaed8-da2c-4b20-ac64-b10b77bd38ac-initial,6c4aaed8-da2c-4b20-ac64-b10b77bd38ac,,draft,2026-01-06T19:18:38.596051,,Initial status from migration
+status-e16a4292-624d-4219-ab23-0f98d4c45fad-initial,e16a4292-624d-4219-ab23-0f98d4c45fad,,draft,2026-01-19T16:18:48.729559,,Initial status from migration
+status-572783df-2279-401c-abcf-67f7a42ff277-initial,572783df-2279-401c-abcf-67f7a42ff277,,draft,2026-01-19T16:19:26.896676,,Initial status from migration
+status-69ee42f5-9387-44d2-8dd5-75ff809db40f-initial,69ee42f5-9387-44d2-8dd5-75ff809db40f,,draft,2026-01-19T16:39:53.489536,,Initial status from migration
+status-c9e2ad84-53a7-4cbe-8798-2ee3fbc5d7ef-initial,c9e2ad84-53a7-4cbe-8798-2ee3fbc5d7ef,,draft,2026-01-19T16:41:24.273831,,Initial status from migration
+status-6857b4e3-eec3-46c2-a314-99a135e829dd-initial,6857b4e3-eec3-46c2-a314-99a135e829dd,,draft,2026-01-19T16:56:46.902312,,Initial status from migration
+status-d04661a4-33c0-49a6-b4a6-483408e94ebb-initial,d04661a4-33c0-49a6-b4a6-483408e94ebb,,draft,2026-01-19T16:57:12.549659,,Initial status from migration
+status-7584e3bd-2322-496f-a80e-7c05e563614a-initial,7584e3bd-2322-496f-a80e-7c05e563614a,,draft,2026-01-19T17:07:13.448647,,Initial status from migration
+status-4a0d2d87-3469-4481-a297-058fa4d6ef3f-initial,4a0d2d87-3469-4481-a297-058fa4d6ef3f,,draft,2026-01-19T17:07:28.641953,,Initial status from migration
+status-1a426ff4-7c81-4c24-b234-3b7f2d5e35af-initial,1a426ff4-7c81-4c24-b234-3b7f2d5e35af,,draft,2026-01-19T17:14:02.430385,,Initial status from migration
+status-244411c2-cc6c-43f6-838f-59e1aa0e37db-initial,244411c2-cc6c-43f6-838f-59e1aa0e37db,,draft,2026-01-19T17:14:12.811580,,Initial status from migration
+status-d81ed7a9-6f6e-460a-bce0-cfff2b87dce0-initial,d81ed7a9-6f6e-460a-bce0-cfff2b87dce0,,draft,2026-01-19T17:14:26.601455,,Initial status from migration
+status-65a830d9-ff41-4617-a719-505f10abc1c9-initial,65a830d9-ff41-4617-a719-505f10abc1c9,,draft,2026-01-19T17:14:33.549543,,Initial status from migration
+status-523a0e1c-11da-4c3e-9bbb-808c5a841706-initial,523a0e1c-11da-4c3e-9bbb-808c5a841706,,draft,2026-01-19T17:23:59.914082,,Initial status from migration
+status-d8f06931-9679-4e84-a840-438ba5989ca2-initial,d8f06931-9679-4e84-a840-438ba5989ca2,,draft,2026-01-19T17:24:42.335289,,Initial status from migration
+status-c43bcd0d-1dd9-43a2-8c23-eb49a6e1f1dc-initial,c43bcd0d-1dd9-43a2-8c23-eb49a6e1f1dc,,draft,2026-01-19T17:24:52.416730,,Initial status from migration
+status-34138a0d-7f7d-419d-ad40-a4e2de926398-initial,34138a0d-7f7d-419d-ad40-a4e2de926398,,draft,2026-01-19T17:24:58.927697,,Initial status from migration
+status-5f4ed518-5610-4499-b252-e8eea2b5f16f-initial,5f4ed518-5610-4499-b252-e8eea2b5f16f,,draft,2026-01-19T17:40:36.594457,,Initial status from migration
+status-7c1c50c3-8c87-4c0d-a480-b27927a93d7e-initial,7c1c50c3-8c87-4c0d-a480-b27927a93d7e,,draft,2026-01-19T17:41:05.160484,,Initial status from migration
